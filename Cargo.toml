@@ -1,0 +1,60 @@
+[package]
+name = "kevi"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[features]
+# Optional best-effort memory locking for derived keys on Unix.
+memlock = ["dep:libc"]
+
+[dependencies]
+# 🔐 Crypto
+ring = "0.17.8"
+argon2 = { version = "0.5", default-features = true }
+secrecy = { version = "0.10.3", features = ["serde"] }
+zeroize = "1.7"
+# 🧰 Serialization
+serde = { version = "1.0.203", features = ["derive"] }
+ron = "0.12.0"
+toml = "0.9.8"
+serde_json = "1.0"
+sha2 = "0.10"
+hex = "0.4"
+# 🧪 CLI
+clap = { version = "4.5.4", features = ["derive"] }
+
+# 📋 Clipboard copy
+copypasta = "0.10.1"
+inquire = "0.9.1"
+
+# 🌈 Terminal UI
+ratatui = "0.29.0"
+crossterm = "0.29.0"
+
+# 🧪 Error handling
+thiserror = "2.0.17"
+anyhow = "1.0.86"
+base64 = "0.22"
+
+# Unix-only (used behind the optional `memlock` feature)
+# Mark as optional to avoid pulling on non-Unix/when a feature is disabled
+libc = { version = "0.2", optional = true }
+
+# 🔁 Async runtime
+tokio = { version = "1.46", features = ["rt-multi-thread", "macros", "fs"] }
+
+# 🆔 UUID generation (for internal use, optional)
+#uuid = { version = "1.8", features = ["v4"] }
+
+# 🧪 Testing
+assert_cmd = "2.0"
+predicates = "3.1"
+dirs = "6.0.0"
+
+[dev-dependencies]
+tempfile = "3.10"
+serial_test = "3.0"
+
+[build-dependencies]
+chrono = { version = "0.4", default-features = true }

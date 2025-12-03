@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-test:
+    name: Build, Lint, Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Inline style guard (no inline use / inline modules)
+        if: runner.os != 'Windows'
+        run: bash scripts/lint_inline.sh
+
+      - name: Build
+        run: cargo build --all --verbose
+
+      - name: Test
+        run: cargo test --all --verbose
+
+      - name: Test with memlock feature (Linux only)
+        if: runner.os == 'Linux'
+        run: cargo test --all --features memlock --verbose
+
+  link-check:
+    name: Docs link check (lychee)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Run lychee link checker
+        uses: lycheeverse/lychee-action@v1
+        with:
+          # Check links in Markdown and docs; skip the target directory
+          args: --verbose --no-progress '**/*.md' docs/** --exclude-path target
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Do not fail the entire CI on link rot; surface as a separate job result
+      - name: Continue on broken links
+        if: failure()
+        run: |
+          echo "Link checker reported issues (non-fatal)."
+          exit 0
+
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cargo Audit
+        uses: actions-rs/audit-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  coverage:
+    name: Code coverage (cargo-llvm-cov)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Generate coverage (lcov)
+        run: |
+          cargo llvm-cov --workspace --lcov --output-path lcov.info
+
+      - name: Generate coverage (HTML)
+        run: |
+          cargo llvm-cov --workspace --html --output-dir coverage-html
+
+      - name: Upload lcov artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcov.info
+          path: lcov.info
+
+      - name: Upload HTML coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: coverage-html

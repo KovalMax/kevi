@@ -1,0 +1,27 @@
+[package]
+name = "kevi-fuzz"
+version = "0.0.1"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = { version = "0.4", features = ["arbitrary-derive"] }
+arbitrary = { version = "1", features = ["derive"] }
+
+[dependencies.kevi]
+path = ".."
+
+[[bin]]
+name = "fuzz_target_header_parse"
+path = "fuzz_targets/fuzz_target_header_parse.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_target_ron_codec"
+path = "fuzz_targets/fuzz_target_ron_codec.rs"
+test = false
+doc = false
