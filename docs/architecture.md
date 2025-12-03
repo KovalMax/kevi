@@ -31,8 +31,8 @@ enables testing with mocks and evolving the underlying storage/crypto/UX.
 #### Adapters (infrastructure)
 
 - `core::adapters::RonCodec` — `ron` encoding with pretty config.
-- `core::adapters::FileByteStore` — file R/W. Uses `core::fs_secure::write_with_backups` for atomic writes, rotation,
-  and Unix perms.
+- `core::adapters::FileByteStore` — file R/W. Accepts a backups count at construction and uses
+  `core::fs_secure::write_with_backups_n` for atomic writes, rotation, and Unix perms.
 - `core::adapters::CachedKeyResolver` — resolves a derived key for a given header; backs it with `core::dk_session` (
   header‑fingerprinted, TTL‑bound).
 
@@ -45,12 +45,14 @@ enables testing with mocks and evolving the underlying storage/crypto/UX.
 
 - `core::clipboard::{ClipboardEngine, SystemClipboardEngine}` — abstraction over system clipboard.
 - `core::clipboard::copy_with_ttl` — copies and restores previous content after TTL.
+- Policy helpers are centralized: `clipboard::ttl_seconds(config, override)` and
+  `clipboard::environment_warning()` are used by both CLI and TUI.
 
 #### File I/O security
 
-- `core::fs_secure` provides `ensure_parent_secure`, `atomic_write_secure`, and `write_with_backups` enforcing 0700
+- `core::fs_secure` provides `ensure_parent_secure`, `atomic_write_secure`, and `write_with_backups_n` enforcing 0700
   dirs/0600 files on Unix.
-- Backups are rotated per `KEVI_BACKUPS` (default 2) and remain encrypted.
+- Backups are rotated per a configured count (default 2) and remain encrypted.
 
 #### Session cache
 

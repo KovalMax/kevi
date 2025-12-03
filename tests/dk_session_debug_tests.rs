@@ -4,7 +4,7 @@ use std::time::Duration;
 use tempfile::tempdir;
 
 #[test]
-fn dk_session_debug_is_redacted_and_roundtrips() {
+fn dk_session_debug_is_redacted_and_round_trips() {
     let td = tempdir().unwrap();
     let vault_path = td.path().join("vault.ron");
     let sess_path = dk_session_file_for(&vault_path);

@@ -51,6 +51,7 @@ pub enum Commands {
         #[arg(long)]
         path: Option<String>,
     },
+    /// Initialize a new vault
     Init {
         /// Vault file path
         path: Option<String>,
@@ -147,11 +148,6 @@ pub enum Commands {
         #[arg(long)]
         path: Option<String>,
     },
-    // List secrets in an interactive view
-    // List,
-
-    // Launch full terminal UI
-    // Tui,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]

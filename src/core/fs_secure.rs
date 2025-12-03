@@ -61,10 +61,8 @@ fn backup_count_from_env() -> usize {
 
 /// Rotate backups and write atomically, keeping up to N backups.
 /// Backups are named `<file>.1`, `<file>.2`, ..., `<file>.N`.
-pub fn write_with_backups(path: &Path, bytes: &[u8]) -> Result<()> {
+pub fn write_with_backups_n(path: &Path, bytes: &[u8], n: usize) -> Result<()> {
     ensure_parent_secure(path)?;
-
-    let n = backup_count_from_env();
     if n > 0 {
         // Remove the oldest if exists
         let oldest = backup_path(path, n);
@@ -97,4 +95,10 @@ pub fn write_with_backups(path: &Path, bytes: &[u8]) -> Result<()> {
     // Finally, write the new file atomically
     atomic_write_secure(path, bytes)?;
     Ok(())
+}
+
+/// Deprecated: env-coupled variant kept for compatibility. Prefer `write_with_backups_n`.
+pub fn write_with_backups(path: &Path, bytes: &[u8]) -> Result<()> {
+    let n = backup_count_from_env();
+    write_with_backups_n(path, bytes, n)
 }

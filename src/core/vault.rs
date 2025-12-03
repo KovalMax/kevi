@@ -1,9 +1,11 @@
 use crate::config::config::Config;
 use crate::core::adapters::{CachedKeyResolver, FileByteStore, RonCodec};
-use crate::core::clipboard::{copy_with_ttl, environment_warning, ttl_seconds, SystemClipboardEngine};
+use crate::core::clipboard::{
+    copy_with_ttl, environment_warning, ttl_seconds, SystemClipboardEngine,
+};
 use crate::core::crypto::{
-    derive_key_argon2id, header_fingerprint_excluding_nonce,
-    parse_kevi_header, AEAD_AES256GCM, KDF_ARGON2ID,
+    derive_key_argon2id, header_fingerprint_excluding_nonce, parse_kevi_header, AEAD_AES256GCM,
+    KDF_ARGON2ID,
 };
 use crate::core::dk_session::{clear_dk_session, dk_session_file_for, write_dk_session};
 use crate::core::entry::VaultEntry;
@@ -39,14 +41,12 @@ pub struct Vault<'a> {
 impl<'a> Vault<'a> {
     pub fn create(config: &'a Config) -> Self {
         // Compose default adapters
-        let store: Arc<dyn ByteStore> = Arc::new(FileByteStore::new(config.vault_path.clone()));
+        let backups = config.backups.unwrap_or(2);
+        let store: Arc<dyn ByteStore> = Arc::new(FileByteStore::new_with_backups(
+            config.vault_path.clone(),
+            backups,
+        ));
         let codec: Arc<dyn VaultCodec> = Arc::new(RonCodec);
-        // Propagate backups setting to env for lower layers if not already set
-        if env::var("KEVI_BACKUPS").is_err() {
-            if let Some(n) = config.backups {
-                env::set_var("KEVI_BACKUPS", n.to_string());
-            }
-        }
         let key_resolver: Arc<dyn KeyResolver> =
             Arc::new(CachedKeyResolver::new(config.vault_path.clone()));
         let service = Arc::new(VaultService::new(store, codec, key_resolver));
@@ -103,9 +103,11 @@ impl<'a> Vault<'a> {
     ) -> Result<()> {
         // Load entries, optionally bypassing session cache for this call using a temp resolver
         let vault = if once {
-            let store: Arc<dyn ByteStore> = Arc::new(FileByteStore::new(self.config.vault_path.clone()));
+            let store: Arc<dyn ByteStore> =
+                Arc::new(FileByteStore::new(self.config.vault_path.clone()));
             let codec: Arc<dyn VaultCodec> = Arc::new(RonCodec);
-            let resolver: Arc<dyn KeyResolver> = Arc::new(crate::core::adapters::BypassKeyResolver::new());
+            let resolver: Arc<dyn KeyResolver> =
+                Arc::new(crate::core::adapters::BypassKeyResolver::new());
             let svc = Arc::new(VaultService::new(store, codec, resolver));
             spawn_blocking(move || svc.load())
                 .await

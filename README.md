@@ -58,8 +58,10 @@ KEVI_PASSWORD="master-pass" kevi get my-label --no-copy --echo --path ~/.kevi/va
 - `kevi get <label> [--path <vault>] [--field password|user|notes] [--no-copy] [--echo] [--ttl SECONDS] [--once]` —
   retrieve/copy a field; `--once` bypasses session cache
 -
+
 `kevi add [--path <vault>] [--generate [--length N | --passphrase --words N --sep SEP] --no-lower --no-upper --no-digits --no-symbols --allow_ambiguous] [--label L --user U --notes N]` —
 add an entry
+
 - `kevi rm <label> [--path <vault>] [--yes]` — remove an entry (asks for confirmation unless `--yes`)
 - `kevi list [--path <vault>] [--show-users] [--query <substr>] [--json]` — list labels (and usernames if requested),
   filterable and machine‑readable
@@ -110,8 +112,11 @@ Related env vars:
 
 ## Backups
 
-Rotating, encrypted backups are kept as `<vault>.1`, `<vault>.2`, … up to `KEVI_BACKUPS` (default 2). Set
-`KEVI_BACKUPS=0` to disable.
+Rotating, encrypted backups are kept as `<vault>.1`, `<vault>.2`, … up to a configured count (default 2).
+
+- Preferred: set `backups` in `~/.config/kevi/config.toml`.
+- Env override (optional): `KEVI_BACKUPS`.
+- Set to `0` to disable.
 
 ## Security guarantees (short)
 

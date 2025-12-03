@@ -31,13 +31,15 @@ Out of scope (cannot be fully mitigated by Kevi alone):
 
 - Data at rest is encrypted using Argon2id KDF (per‑file salt and stored cost parameters) and AES‑256‑GCM.
 - The file header is authenticated as AEAD Associated Data, preventing parameter‑swap attacks and detecting tampering.
-- Clipboard operations auto‑clear after a TTL and attempt to restore prior content.
+- Clipboard operations auto‑clear after a TTL and attempt to restore prior content. Clipboard policy and environment
+  warnings (SSH/headless) are centralized and consistently applied across CLI and TUI.
 - Session cache stores a derived key bound to the vault header (KDF params + salt), not the passphrase.
 - Optional best‑effort memory locking (mlock) can be enabled on Unix via the `memlock` feature; failures to lock do not
   crash and keys are zeroized after use.
 - Fuzzing targets exist for the header parser and the RON codec to reduce parser/decoder panics. See `docs/fuzzing.md`.
 - On Unix, directories and files are created with restrictive permissions (0700 for directories, 0600 for files).
   Windows/macOS receive best‑effort protection (documented limitations may apply).
+- Rotating encrypted backups are kept per configured count (default 2) and remain encrypted.
 
 #### Handling of secrets in memory
 

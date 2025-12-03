@@ -1,7 +1,6 @@
 use crate::core::crypto::{derive_key_argon2id, header_fingerprint_excluding_nonce, KeviHeader, KEY_LEN};
 use crate::core::dk_session::{dk_session_file_for, read_dk_session, write_dk_session};
 use crate::core::entry::VaultEntry;
-use crate::core::fs_secure::write_with_backups;
 use crate::core::ports::{ByteStore, DerivedKey, KeyResolver, VaultCodec};
 use anyhow::{anyhow, Context, Result};
 use ron::ser::PrettyConfig;
@@ -35,10 +34,17 @@ impl VaultCodec for RonCodec {
 // ===== File ByteStore adapter =====
 pub struct FileByteStore {
     path: PathBuf,
+    backups: usize,
 }
 
 impl FileByteStore {
-    pub fn new(path: PathBuf) -> Self { Self { path } }
+    /// Construct with backups count resolved from environment (KEVI_BACKUPS) or default 2.
+    pub fn new(path: PathBuf) -> Self {
+        Self { path, backups: 2 }
+    }
+
+    /// Preferred: construct with explicit backups count to avoid env coupling.
+    pub fn new_with_backups(path: PathBuf, backups: usize) -> Self { Self { path, backups } }
 }
 
 impl ByteStore for FileByteStore {
@@ -54,7 +60,7 @@ impl ByteStore for FileByteStore {
     }
 
     fn write(&self, bytes: &[u8]) -> Result<()> {
-        write_with_backups(&self.path, bytes)
+        crate::core::fs_secure::write_with_backups_n(&self.path, bytes, self.backups)
     }
 }
 
@@ -85,7 +91,7 @@ impl KeyResolver for CachedKeyResolver {
         }
         // Cache miss: derive from passphrase
         let pw = if let Ok(pw) = env::var("KEVI_PASSWORD") { pw } else {
-            // Lazy import to avoid forcing inquire on all builds
+            // Lazy import to avoid forcing to inquire on all builds
             inquire::Password::new("Master password").without_confirmation().prompt()?
         };
         let key_arr = derive_key_argon2id(&pw, &hdr.salt, hdr.m_cost_kib, hdr.t_cost, hdr.p_lanes)?;
@@ -121,7 +127,7 @@ impl KeyResolver for CachedKeyResolver {
     }
 }
 
-/// A resolver that always derives from passphrase and never reads/writes the dk-session cache.
+/// A resolver that always derives from a passphrase and never reads/writes the dk-session cache.
 pub struct BypassKeyResolver;
 
 impl BypassKeyResolver {

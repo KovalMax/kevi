@@ -27,18 +27,21 @@ pub fn render_list(f: &mut Frame, app: &App) {
     let search = Paragraph::new(search_label).style(theme.muted_style());
     f.render_widget(search, chunks[1]);
 
-    // Build items (labels only; never render secrets)
+    // Build items (labels only; never render secrets). Add a visible cursor marker for selection.
     let labels = app.visible_labels();
     let items: Vec<ListItem> = labels.iter().enumerate().map(|(i, lbl)| {
-        let style = if i == app.selected { theme.selection_style() } else { theme.normal_style() };
-        ListItem::new(Line::from(lbl.clone())).style(style)
+        let is_sel = i == app.selected;
+        let style = if is_sel { theme.selection_style() } else { theme.normal_style() };
+        let marker = if is_sel { "> " } else { "  " };
+        let line = Line::from(format!("{}{}", marker, lbl));
+        ListItem::new(line).style(style)
     }).collect();
 
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Entries"));
     f.render_widget(list, chunks[2]);
 
-    let footer_text = app.toast_message().unwrap_or("q=quit  Enter=copy password  u=copy user");
+    let footer_text = app.toast_message().unwrap_or("q=quit  j/k or arrows=move  (> marks selection)  Enter=copy password  u=copy user");
     let footer = Paragraph::new(footer_text).style(theme.toast_style());
     f.render_widget(footer, chunks[3]);
 }

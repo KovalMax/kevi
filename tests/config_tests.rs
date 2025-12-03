@@ -1,8 +1,10 @@
 use kevi::config::config::Config;
-use kevi::core::vault::Vault;
+use kevi::core::adapters::FileByteStore;
+use kevi::core::ports::ByteStore;
 use serial_test::serial;
 use std::env;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use tempfile::tempdir;
 
@@ -110,23 +112,45 @@ fn default_vault_path_uses_platform_data_dir_under_home() {
 
 #[test]
 #[serial]
-fn backups_env_is_propagated_from_config_on_vault_create() {
+fn backups_rotation_uses_configured_count() {
     let td = tempdir().unwrap();
     env::set_var("HOME", td.path());
-    env::set_var("KEVI_CONFIG_DIR", td.path().join("cfg").to_string_lossy().to_string());
+    env::set_var(
+        "KEVI_CONFIG_DIR",
+        td.path().join("cfg").to_string_lossy().to_string(),
+    );
+    // No env override
     env::remove_var("KEVI_BACKUPS");
-    let vault_path = td.path().join("vault.ron");
-    // Construct config with backups value
-    let cfg = Config {
-        vault_path: vault_path.clone(),
+
+    // Configure backups = 3
+    let path = td.path().join("vault.ron");
+    let backups = 3usize;
+    let _cfg = Config {
+        vault_path: path.clone(),
         clipboard_ttl: None,
-        backups: Some(5),
+        backups: Some(backups),
         generator_length: None,
         generator_words: None,
         generator_sep: None,
         avoid_ambiguous: None,
     };
-    let _vault = Vault::create(&cfg);
-    let b = env::var("KEVI_BACKUPS").expect("env set by Vault::create");
-    assert_eq!(b, "5");
+
+    // Use FileByteStore with explicit backups count (no env coupling)
+    let store = FileByteStore::new_with_backups(path.clone(), backups);
+
+    // Perform multiple writes to trigger rotation
+    store.write(b"A").expect("write 1");
+    // After first write: no backups yet
+    assert!(!Path::new(&format!("{}{}", path.display(), ".1")).exists());
+
+    store.write(b"B").expect("write 2");
+    assert!(Path::new(&format!("{}{}", path.display(), ".1")).exists());
+
+    store.write(b"C").expect("write 3");
+    store.write(b"D").expect("write 4");
+    // We keep up to .1, .2, .3; .4 must not exist
+    assert!(Path::new(&format!("{}{}", path.display(), ".1")).exists());
+    assert!(Path::new(&format!("{}{}", path.display(), ".2")).exists());
+    assert!(Path::new(&format!("{}{}", path.display(), ".3")).exists());
+    assert!(!Path::new(&format!("{}{}", path.display(), ".4")).exists());
 }
