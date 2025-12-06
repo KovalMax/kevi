@@ -21,9 +21,30 @@ pub fn render_details(f: &mut Frame, app: &App) {
 
     let label = app.selected_label().unwrap_or_else(|| "(none)".to_string());
     // Never render secrets: show placeholders
-    let user_mask = if app.selected_field(crate::core::vault::GetField::User).is_some() { "hidden" } else { "(none)" };
-    let pass_mask = if app.selected_field(crate::core::vault::GetField::Password).is_some() { "hidden" } else { "(none)" };
-    let notes_mask = if app.selected_field(crate::core::vault::GetField::Notes).is_some() { "hidden" } else { "(none)" };
+    let user_mask = if app
+        .selected_field(crate::core::vault::GetField::User)
+        .is_some()
+    {
+        "hidden"
+    } else {
+        "(none)"
+    };
+    let pass_mask = if app
+        .selected_field(crate::core::vault::GetField::Password)
+        .is_some()
+    {
+        "hidden"
+    } else {
+        "(none)"
+    };
+    let notes_mask = if app
+        .selected_field(crate::core::vault::GetField::Notes)
+        .is_some()
+    {
+        "hidden"
+    } else {
+        "(none)"
+    };
 
     let body = format!(
         "Label: {label}\nUsername: {user_mask}\nPassword: {pass_mask}\nNotes: {notes_mask}"

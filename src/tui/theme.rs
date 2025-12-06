@@ -26,10 +26,24 @@ impl Default for Theme {
 
 impl Theme {
     pub fn title_style(&self) -> Style {
-        Style::default().fg(self.primary).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(self.primary)
+            .add_modifier(Modifier::BOLD)
     }
-    pub fn normal_style(&self) -> Style { Style::default().fg(self.fg) }
-    pub fn muted_style(&self) -> Style { Style::default().fg(self.muted) }
-    pub fn selection_style(&self) -> Style { Style::default().fg(self.selection).add_modifier(Modifier::BOLD) }
-    pub fn toast_style(&self) -> Style { Style::default().fg(self.accent).add_modifier(Modifier::BOLD) }
+    pub fn normal_style(&self) -> Style {
+        Style::default().fg(self.fg)
+    }
+    pub fn muted_style(&self) -> Style {
+        Style::default().fg(self.muted)
+    }
+    pub fn selection_style(&self) -> Style {
+        Style::default()
+            .fg(self.selection)
+            .add_modifier(Modifier::BOLD)
+    }
+    pub fn toast_style(&self) -> Style {
+        Style::default()
+            .fg(self.accent)
+            .add_modifier(Modifier::BOLD)
+    }
 }

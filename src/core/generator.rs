@@ -22,7 +22,10 @@ pub struct DefaultPasswordGenerator {
 
 impl DefaultPasswordGenerator {
     pub fn new(rng: Arc<dyn Rng>) -> Self {
-        Self { rng, wordlist: WORDS }
+        Self {
+            rng,
+            wordlist: WORDS,
+        }
     }
 
     #[cfg(test)]
@@ -54,7 +57,9 @@ fn filter_ambiguous(mut v: Vec<u8>) -> Vec<u8> {
 }
 
 fn uniform_index(rng: &dyn Rng, len: usize) -> Result<usize> {
-    if len == 0 { return Err(anyhow!("empty pool")); }
+    if len == 0 {
+        return Err(anyhow!("empty pool"));
+    }
     // Rejection sampling on u32 space
     let n = len as u32;
     let zone = (u32::MAX / n) * n;
@@ -69,7 +74,9 @@ fn uniform_index(rng: &dyn Rng, len: usize) -> Result<usize> {
 }
 
 fn fy_shuffle(rng: &dyn Rng, data: &mut [u8]) -> Result<()> {
-    if data.len() <= 1 { return Ok(()); }
+    if data.len() <= 1 {
+        return Ok(());
+    }
     for i in (1..data.len()).rev() {
         let j = uniform_index(rng, i + 1)?;
         data.swap(i, j);
@@ -79,10 +86,18 @@ fn fy_shuffle(rng: &dyn Rng, data: &mut [u8]) -> Result<()> {
 
 fn generate_chars(rng: &dyn Rng, policy: &GenPolicy) -> Result<String> {
     let mut classes: Vec<Vec<u8>> = Vec::new();
-    if policy.lower { classes.push(LOWER.to_vec()); }
-    if policy.upper { classes.push(UPPER.to_vec()); }
-    if policy.digits { classes.push(DIGITS.to_vec()); }
-    if policy.symbols { classes.push(SYMBOLS.to_vec()); }
+    if policy.lower {
+        classes.push(LOWER.to_vec());
+    }
+    if policy.upper {
+        classes.push(UPPER.to_vec());
+    }
+    if policy.digits {
+        classes.push(DIGITS.to_vec());
+    }
+    if policy.symbols {
+        classes.push(SYMBOLS.to_vec());
+    }
     if classes.is_empty() {
         return Err(anyhow!("No character classes selected"));
     }
@@ -93,7 +108,9 @@ fn generate_chars(rng: &dyn Rng, policy: &GenPolicy) -> Result<String> {
     }
     // Ensure all classes are non-empty after filtering
     if classes.iter().any(|c| c.is_empty()) {
-        return Err(anyhow!("Selected classes empty after filtering (too restrictive)"));
+        return Err(anyhow!(
+            "Selected classes empty after filtering (too restrictive)"
+        ));
     }
 
     let need = policy.length as usize;
@@ -108,9 +125,11 @@ fn generate_chars(rng: &dyn Rng, policy: &GenPolicy) -> Result<String> {
         out.push(cls[idx]);
     }
 
-    // Build combined pool
+    // Build the combined pool
     let mut pool: Vec<u8> = Vec::new();
-    for cls in &classes { pool.extend_from_slice(cls); }
+    for cls in &classes {
+        pool.extend_from_slice(cls);
+    }
 
     // Fill the rest
     while out.len() < need {
@@ -120,13 +139,20 @@ fn generate_chars(rng: &dyn Rng, policy: &GenPolicy) -> Result<String> {
 
     // Shuffle to avoid predictable class order
     fy_shuffle(rng, &mut out)?;
-    Ok(String::from_utf8(out).unwrap())
+    Ok(String::from_utf8(out)?)
 }
 
 // ===== Passphrase-mode generator =====
 
-fn generate_passphrase(rng: &dyn Rng, wordlist: &'static [&'static str], words: u16, sep: &str) -> Result<String> {
-    if wordlist.is_empty() { return Err(anyhow!("wordlist empty")); }
+fn generate_passphrase(
+    rng: &dyn Rng,
+    wordlist: &'static [&'static str],
+    words: u16,
+    sep: &str,
+) -> Result<String> {
+    if wordlist.is_empty() {
+        return Err(anyhow!("wordlist empty"));
+    }
     let count = words.max(1) as usize;
     let mut parts: Vec<&'static str> = Vec::with_capacity(count);
     let n = wordlist.len();
@@ -140,28 +166,50 @@ fn generate_passphrase(rng: &dyn Rng, wordlist: &'static [&'static str], words: 
 // ===== Basic strength estimator (optional UI hint) =====
 pub fn estimate_bits_char_mode(policy: &GenPolicy) -> f64 {
     let mut pool: usize = 0;
-    if policy.lower { pool += LOWER.len(); }
-    if policy.upper { pool += UPPER.len(); }
-    if policy.digits { pool += DIGITS.len(); }
-    if policy.symbols { pool += SYMBOLS.len(); }
+    if policy.lower {
+        pool += LOWER.len();
+    }
+    if policy.upper {
+        pool += UPPER.len();
+    }
+    if policy.digits {
+        pool += DIGITS.len();
+    }
+    if policy.symbols {
+        pool += SYMBOLS.len();
+    }
     if policy.avoid_ambiguous {
         // Remove ambiguous characters approximately
         let ambiguous_set = AMBIGUOUS.len();
         // Roughly distribute removal across pools
         pool = pool.saturating_sub(ambiguous_set.min(pool));
     }
-    if pool == 0 { return 0.0; }
+    if pool == 0 {
+        return 0.0;
+    }
     let per_char = (pool as f64).log2();
     per_char * (policy.length as f64)
 }
 
 pub fn estimate_bits_passphrase(words: u16, wordlist_len: usize) -> f64 {
-    if wordlist_len == 0 { return 0.0; }
+    if wordlist_len == 0 {
+        return 0.0;
+    }
     (wordlist_len as f64).log2() * (words as f64)
 }
 
 pub fn strength_label(bits: f64) -> &'static str {
-    if bits < 28.0 { "very weak" } else if bits < 36.0 { "weak" } else if bits < 60.0 { "fair" } else if bits < 128.0 { "strong" } else { "excellent" }
+    if bits < 28.0 {
+        "very weak"
+    } else if bits < 36.0 {
+        "weak"
+    } else if bits < 60.0 {
+        "fair"
+    } else if bits < 128.0 {
+        "strong"
+    } else {
+        "excellent"
+    }
 }
 
 #[cfg(test)]
@@ -173,11 +221,19 @@ mod tests {
     struct MockRng {
         data: std::sync::Mutex<Vec<u8>>,
     }
-    impl MockRng { fn new(seq: &[u8]) -> Self { Self { data: std::sync::Mutex::new(seq.to_vec()) } } }
+    impl MockRng {
+        fn new(seq: &[u8]) -> Self {
+            Self {
+                data: std::sync::Mutex::new(seq.to_vec()),
+            }
+        }
+    }
     impl Rng for MockRng {
         fn fill(&self, bytes: &mut [u8]) -> Result<()> {
             let mut guard = self.data.lock().unwrap();
-            if guard.is_empty() { *guard = vec![0u8; 1024]; }
+            if guard.is_empty() {
+                *guard = vec![0u8; 1024];
+            }
             for b in bytes.iter_mut() {
                 let v = guard.remove(0);
                 *b = v;

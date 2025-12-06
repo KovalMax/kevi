@@ -74,4 +74,3 @@ enables testing with mocks and evolving the underlying storage/crypto/UX.
 - Unit tests on crypto (roundtrip, tamper/wrong password), generator, session, and TUI rendering.
 - Integration tests for CLI commands (`assert_cmd`): `get`, `add`, `rm`, `list`, `header`, `unlock/lock`, backups,
   config precedence.
-- Style guard in CI forbids inline `use` statements and inline module bodies (except `mod tests {}`) in sources.

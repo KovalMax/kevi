@@ -17,8 +17,11 @@ pub struct SystemClipboardEngine {
 
 impl SystemClipboardEngine {
     pub fn new() -> Result<Self> {
-        let ctx = ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
-        Ok(Self { ctx: Mutex::new(ctx) })
+        let ctx =
+            ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
+        Ok(Self {
+            ctx: Mutex::new(ctx),
+        })
     }
 }
 
@@ -62,7 +65,11 @@ pub fn copy_with_ttl(
 /// Resolve clipboard TTL seconds with precedence: override > KEVI_CLIP_TTL > config.clipboard_ttl > default (20)
 pub fn ttl_seconds(config: &Config, override_ttl: Option<u64>) -> u64 {
     override_ttl
-        .or_else(|| std::env::var("KEVI_CLIP_TTL").ok().and_then(|s| s.parse::<u64>().ok()))
+        .or_else(|| {
+            std::env::var("KEVI_CLIP_TTL")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+        })
         .or(config.clipboard_ttl)
         .unwrap_or(20)
 }
@@ -70,12 +77,15 @@ pub fn ttl_seconds(config: &Config, override_ttl: Option<u64>) -> u64 {
 /// Best-effort environment warning when clipboard is likely unavailable (SSH/headless)
 pub fn environment_warning() -> Option<String> {
     let is_ssh = std::env::var("SSH_CONNECTION").is_ok() || std::env::var("SSH_TTY").is_ok();
-    #[cfg(unix)]
+    #[cfg(target_family = "unix")]
     let headless = std::env::var("DISPLAY").is_err() && std::env::var("WAYLAND_DISPLAY").is_err();
-    #[cfg(not(unix))]
+    #[cfg(not(target_family = "unix"))]
     let headless = false;
     if is_ssh {
-        return Some("Detected SSH session; clipboard may be unavailable. Consider --no-copy --echo".to_string());
+        return Some(
+            "Detected SSH session; clipboard may be unavailable. Consider --no-copy --echo"
+                .to_string(),
+        );
     }
     if headless {
         return Some("No DISPLAY/WAYLAND detected; clipboard may be unavailable.".to_string());

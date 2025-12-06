@@ -4,7 +4,12 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use crate::tui::app::{App, FormField, View};
 use crate::tui::theme::Theme;
 
-fn field_line<'a>(label: &'a str, value: &'a str, focused: bool, theme: &'a Theme) -> Paragraph<'a> {
+fn field_line<'a>(
+    label: &'a str,
+    value: &'a str,
+    focused: bool,
+    theme: &'a Theme,
+) -> Paragraph<'a> {
     let text = format!("{label}: {value}");
     let mut p = Paragraph::new(text);
     if focused {

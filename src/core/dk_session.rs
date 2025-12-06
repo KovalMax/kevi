@@ -1,4 +1,5 @@
 use crate::core::fs_secure::{atomic_write_secure, ensure_parent_secure};
+use crate::core::session::SessionConstructor;
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
 use secrecy::{ExposeSecret, SecretBox};
@@ -6,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
 #[derive(Debug, Serialize, Deserialize)]
 struct DerivedKeySessionFile {
     expires_at_unix: u64,
@@ -13,6 +15,8 @@ struct DerivedKeySessionFile {
     // base64-encoded derived key bytes (32 bytes)
     key_b64: String,
 }
+
+impl SessionConstructor for DerivedKeySessionFile {}
 
 pub struct DerivedKeySession {
     pub expires_at_unix: u64,
@@ -41,7 +45,12 @@ pub fn dk_session_file_for(vault_path: &Path) -> PathBuf {
     vault_path.with_extension("dksession")
 }
 
-pub fn write_dk_session(session_path: &Path, header_fingerprint_hex: &str, key: &SecretBox<Vec<u8>>, ttl: Duration) -> Result<()> {
+pub fn write_dk_session(
+    session_path: &Path,
+    header_fingerprint_hex: &str,
+    key: &SecretBox<Vec<u8>>,
+    ttl: Duration,
+) -> Result<()> {
     let data = DerivedKeySessionFile {
         expires_at_unix: now_unix().saturating_add(ttl.as_secs()),
         header_fingerprint_hex: header_fingerprint_hex.to_string(),
@@ -53,17 +62,11 @@ pub fn write_dk_session(session_path: &Path, header_fingerprint_hex: &str, key: 
 }
 
 pub fn read_dk_session(session_path: &Path) -> Result<Option<DerivedKeySession>> {
-    if !session_path.exists() {
-        return Ok(None);
-    }
-    let bytes = fs::read(session_path).context("failed to read derived-key session file")?;
-    let data: DerivedKeySessionFile = match ron::from_str(&String::from_utf8_lossy(&bytes)) {
+    let data = match DerivedKeySessionFile::new(session_path) {
         Ok(v) => v,
-        Err(_) => {
-            let _ = fs::remove_file(session_path);
-            return Ok(None);
-        }
+        Err(_) => return Ok(None),
     };
+
     if now_unix() >= data.expires_at_unix {
         let _ = fs::remove_file(session_path);
         return Ok(None);

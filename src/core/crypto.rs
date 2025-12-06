@@ -31,7 +31,13 @@ pub fn default_params() -> (u32, u32, u32) {
     (64 * 1024, 3, 1)
 }
 
-pub fn derive_key_argon2id(password: &str, salt: &[u8], m_cost_kib: u32, t_cost: u32, p: u32) -> Result<[u8; KEY_LEN]> {
+pub fn derive_key_argon2id(
+    password: &str,
+    salt: &[u8],
+    m_cost_kib: u32,
+    t_cost: u32,
+    p: u32,
+) -> Result<[u8; KEY_LEN]> {
     let params = Params::new(m_cost_kib, t_cost, p, Some(KEY_LEN))
         .map_err(|e| anyhow!("invalid Argon2 params: {e}"))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
@@ -154,7 +160,8 @@ pub fn encrypt_vault(data: &[u8], password: &str) -> Result<Vec<u8>> {
     let (m_cost_kib, t_cost, p_lanes) = default_params();
     let rng = SystemRandom::new();
     let mut salt = [0u8; SALT_LEN];
-    rng.fill(&mut salt).map_err(|_| anyhow!("failed to generate salt"))?;
+    rng.fill(&mut salt)
+        .map_err(|_| anyhow!("failed to generate salt"))?;
     let key = derive_key_argon2id(password, &salt, m_cost_kib, t_cost, p_lanes)?;
     encrypt_vault_with_key(data, m_cost_kib, t_cost, p_lanes, salt, &key)
 }
@@ -177,7 +184,8 @@ pub fn encrypt_vault_with_key(
 ) -> Result<Vec<u8>> {
     let rng = SystemRandom::new();
     let mut nonce_bytes = [0u8; NONCE_LEN];
-    rng.fill(&mut nonce_bytes).map_err(|_| anyhow!("failed to generate nonce"))?;
+    rng.fill(&mut nonce_bytes)
+        .map_err(|_| anyhow!("failed to generate nonce"))?;
 
     let unbound = aead::UnboundKey::new(&aead::AES_256_GCM, derived_key)
         .map_err(|_| anyhow!("failed to create sealing key"))?;

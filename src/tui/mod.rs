@@ -31,7 +31,8 @@ pub async fn launch(config: &Config) -> Result<()> {
     // Compose service (same defaults as CLI flows)
     let store: Arc<dyn ByteStore> = Arc::new(FileByteStore::new(config.vault_path.clone()));
     let codec: Arc<dyn VaultCodec> = Arc::new(RonCodec);
-    let resolver: Arc<dyn KeyResolver> = Arc::new(CachedKeyResolver::new(config.vault_path.clone()));
+    let resolver: Arc<dyn KeyResolver> =
+        Arc::new(CachedKeyResolver::new(config.vault_path.clone()));
     let service = Arc::new(VaultService::new(store, codec, resolver));
 
     // Load entries (may prompt for password if no session cache) without blocking the async runtime
@@ -54,13 +55,11 @@ pub async fn launch(config: &Config) -> Result<()> {
     let tick_rate = Duration::from_millis(200);
 
     let res = loop {
-        terminal.draw(|f| {
-            match app.view {
-                View::List => render_list(f, &app),
-                View::Details => render_details(f, &app),
-                View::AddModal | View::EditModal => render_form(f, &app),
-                View::ConfirmDelete => render_confirm(f, &app),
-            }
+        terminal.draw(|f| match app.view {
+            View::List => render_list(f, &app),
+            View::Details => render_details(f, &app),
+            View::AddModal | View::EditModal => render_form(f, &app),
+            View::ConfirmDelete => render_confirm(f, &app),
         })?;
 
         let timeout = tick_rate
@@ -86,18 +85,36 @@ pub async fn launch(config: &Config) -> Result<()> {
                                         if let Some(val) = app.selected_field(GetField::Password) {
                                             if let Ok(engine) = SystemClipboardEngine::new() {
                                                 let secret = SecretString::new(val.into());
-                                                let _ = copy_with_ttl(Arc::new(engine), &secret, Duration::from_secs(ttl_secs));
-                                                app.toast(format!("Password copied ({}s)", ttl_secs));
-                                            } else { app.toast("Clipboard unavailable".to_string()); }
+                                                let _ = copy_with_ttl(
+                                                    Arc::new(engine),
+                                                    &secret,
+                                                    Duration::from_secs(ttl_secs),
+                                                );
+                                                app.toast(format!(
+                                                    "Password copied ({}s)",
+                                                    ttl_secs
+                                                ));
+                                            } else {
+                                                app.toast("Clipboard unavailable".to_string());
+                                            }
                                         }
                                     }
                                     KeyCode::Char('u') => {
                                         if let Some(val) = app.selected_field(GetField::User) {
                                             if let Ok(engine) = SystemClipboardEngine::new() {
                                                 let secret = SecretString::new(val.into());
-                                                let _ = copy_with_ttl(Arc::new(engine), &secret, Duration::from_secs(ttl_secs));
-                                                app.toast(format!("Username copied ({}s)", ttl_secs));
-                                            } else { app.toast("Clipboard unavailable".to_string()); }
+                                                let _ = copy_with_ttl(
+                                                    Arc::new(engine),
+                                                    &secret,
+                                                    Duration::from_secs(ttl_secs),
+                                                );
+                                                app.toast(format!(
+                                                    "Username copied ({}s)",
+                                                    ttl_secs
+                                                ));
+                                            } else {
+                                                app.toast("Clipboard unavailable".to_string());
+                                            }
                                         }
                                     }
                                     _ => {}
@@ -111,33 +128,47 @@ pub async fn launch(config: &Config) -> Result<()> {
                                 },
                             }
                         }
-                        View::Details => {
-                            match k.code {
-                                KeyCode::Char('q') | KeyCode::Left | KeyCode::Char('h') => app.back_to_list(),
-                                KeyCode::Enter => {
-                                    if let Some(val) = app.selected_field(GetField::Password) {
-                                        if let Ok(engine) = SystemClipboardEngine::new() {
-                                            let secret = SecretString::new(val.into());
-                                            let _ = copy_with_ttl(Arc::new(engine), &secret, Duration::from_secs(ttl_secs));
-                                            app.toast(format!("Password copied ({}s)", ttl_secs));
-                                        } else { app.toast("Clipboard unavailable".to_string()); }
+                        View::Details => match k.code {
+                            KeyCode::Char('q') | KeyCode::Left | KeyCode::Char('h') => {
+                                app.back_to_list()
+                            }
+                            KeyCode::Enter => {
+                                if let Some(val) = app.selected_field(GetField::Password) {
+                                    if let Ok(engine) = SystemClipboardEngine::new() {
+                                        let secret = SecretString::new(val.into());
+                                        let _ = copy_with_ttl(
+                                            Arc::new(engine),
+                                            &secret,
+                                            Duration::from_secs(ttl_secs),
+                                        );
+                                        app.toast(format!("Password copied ({}s)", ttl_secs));
+                                    } else {
+                                        app.toast("Clipboard unavailable".to_string());
                                     }
                                 }
-                                KeyCode::Char('u') => {
-                                    if let Some(val) = app.selected_field(GetField::User) {
-                                        if let Ok(engine) = SystemClipboardEngine::new() {
-                                            let secret = SecretString::new(val.into());
-                                            let _ = copy_with_ttl(Arc::new(engine), &secret, Duration::from_secs(ttl_secs));
-                                            app.toast(format!("Username copied ({}s)", ttl_secs));
-                                        } else { app.toast("Clipboard unavailable".to_string()); }
-                                    } else { app.toast("No username".to_string()); }
-                                }
-                                KeyCode::Char('e') => app.enter_edit(),
-                                KeyCode::Char('a') => app.enter_add(),
-                                KeyCode::Char('d') => app.enter_confirm_delete(),
-                                _ => {}
                             }
-                        }
+                            KeyCode::Char('u') => {
+                                if let Some(val) = app.selected_field(GetField::User) {
+                                    if let Ok(engine) = SystemClipboardEngine::new() {
+                                        let secret = SecretString::new(val.into());
+                                        let _ = copy_with_ttl(
+                                            Arc::new(engine),
+                                            &secret,
+                                            Duration::from_secs(ttl_secs),
+                                        );
+                                        app.toast(format!("Username copied ({}s)", ttl_secs));
+                                    } else {
+                                        app.toast("Clipboard unavailable".to_string());
+                                    }
+                                } else {
+                                    app.toast("No username".to_string());
+                                }
+                            }
+                            KeyCode::Char('e') => app.enter_edit(),
+                            KeyCode::Char('a') => app.enter_add(),
+                            KeyCode::Char('d') => app.enter_confirm_delete(),
+                            _ => {}
+                        },
                         View::AddModal | View::EditModal => {
                             match k.code {
                                 KeyCode::Esc => app.cancel_modal(),
@@ -147,7 +178,9 @@ pub async fn launch(config: &Config) -> Result<()> {
                                 KeyCode::Enter => {
                                     // Validate label
                                     let label = app.form_label.trim().to_string();
-                                    if label.is_empty() { app.toast("Label required".to_string()); } else {
+                                    if label.is_empty() {
+                                        app.toast("Label required".to_string());
+                                    } else {
                                         // Build entry; for Add we generate a strong password by default
                                         let is_add = matches!(app.view, View::AddModal);
                                         let current_labels: Vec<String> = app.visible_labels();
@@ -155,8 +188,16 @@ pub async fn launch(config: &Config) -> Result<()> {
                                             app.toast("Label exists".to_string());
                                         } else {
                                             // Clone options for move into closures
-                                            let user_opt = if app.form_user.trim().is_empty() { None } else { Some(app.form_user.trim().to_string()) };
-                                            let notes_opt = if app.form_notes.trim().is_empty() { None } else { Some(app.form_notes.trim().to_string()) };
+                                            let user_opt = if app.form_user.trim().is_empty() {
+                                                None
+                                            } else {
+                                                Some(app.form_user.trim().to_string())
+                                            };
+                                            let notes_opt = if app.form_notes.trim().is_empty() {
+                                                None
+                                            } else {
+                                                Some(app.form_notes.trim().to_string())
+                                            };
                                             let label_for_save = label.clone();
                                             let original_label = app.form_original_label.clone();
                                             let svc = service.clone();
@@ -176,17 +217,28 @@ pub async fn launch(config: &Config) -> Result<()> {
                                             } else {
                                                 let _ = spawn_blocking(move || {
                                                     let mut ents = svc.load()?;
-                                                    if let Some(pos) = ents.iter().position(|e| e.label == original_label) {
+                                                    if let Some(pos) = ents
+                                                        .iter()
+                                                        .position(|e| e.label == original_label)
+                                                    {
                                                         ents[pos].label = label_for_save;
-                                                        ents[pos].username = user_opt.map(|u| SecretString::new(u.into()));
+                                                        ents[pos].username = user_opt
+                                                            .map(|u| SecretString::new(u.into()));
                                                         ents[pos].notes = notes_opt;
                                                         svc.save(&ents)
-                                                    } else { Ok(()) }
-                                                }).await.map_err(|_| anyhow!("task join error"))??;
+                                                    } else {
+                                                        Ok(())
+                                                    }
+                                                })
+                                                .await
+                                                .map_err(|_| anyhow!("task join error"))??;
                                             }
                                             // Reload entries
                                             let svc_reload = service.clone();
-                                            let new_entries = spawn_blocking(move || svc_reload.load()).await.map_err(|_| anyhow!("task join error"))??;
+                                            let new_entries =
+                                                spawn_blocking(move || svc_reload.load())
+                                                    .await
+                                                    .map_err(|_| anyhow!("task join error"))??;
                                             app.replace_entries(new_entries);
                                             app.view = View::List;
                                             app.toast("Saved".to_string());
@@ -194,7 +246,9 @@ pub async fn launch(config: &Config) -> Result<()> {
                                     }
                                 }
                                 KeyCode::Char(c) => {
-                                    if !c.is_control() { app.update_form_char(c); }
+                                    if !c.is_control() {
+                                        app.update_form_char(c);
+                                    }
                                 }
                                 _ => {}
                             }
@@ -205,13 +259,24 @@ pub async fn launch(config: &Config) -> Result<()> {
                                 KeyCode::Char('y') => {
                                     if let Some(label) = app.selected_label() {
                                         let svc_rm = service.clone();
-                                        let _ = spawn_blocking(move || svc_rm.remove_entry(&label)).await;
+                                        let _ = spawn_blocking(move || svc_rm.remove_entry(&label))
+                                            .await;
                                         // Reload
                                         let svc_reload = service.clone();
-                                        if let Ok(entries) = spawn_blocking(move || svc_reload.load()).await.map_err(|_| anyhow!("task join error")) { if let Ok(ents) = entries { app.replace_entries(ents); } }
+                                        if let Ok(entries) =
+                                            spawn_blocking(move || svc_reload.load())
+                                                .await
+                                                .map_err(|_| anyhow!("task join error"))
+                                        {
+                                            if let Ok(ents) = entries {
+                                                app.replace_entries(ents);
+                                            }
+                                        }
                                         app.view = View::List;
                                         app.toast("Deleted".to_string());
-                                    } else { app.cancel_confirm_delete(); }
+                                    } else {
+                                        app.cancel_confirm_delete();
+                                    }
                                 }
                                 _ => {}
                             }

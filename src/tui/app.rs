@@ -18,7 +18,11 @@ pub enum View {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum FormField { Label, User, Notes }
+pub enum FormField {
+    Label,
+    User,
+    Notes,
+}
 
 pub struct App {
     entries: Vec<VaultEntry>,
@@ -59,13 +63,19 @@ impl App {
     }
 
     pub fn next(&mut self) {
-        if self.filtered.is_empty() { return; }
+        if self.filtered.is_empty() {
+            return;
+        }
         self.selected = (self.selected + 1).min(self.filtered.len().saturating_sub(1));
     }
 
     pub fn prev(&mut self) {
-        if self.filtered.is_empty() { return; }
-        if self.selected > 0 { self.selected -= 1; }
+        if self.filtered.is_empty() {
+            return;
+        }
+        if self.selected > 0 {
+            self.selected -= 1;
+        }
     }
 
     pub fn enter_search(&mut self) {
@@ -91,7 +101,9 @@ impl App {
         self.toast_ticks = 10; // ~2s at 200ms tick
     }
 
-    pub fn toast_message(&self) -> Option<&str> { self.toast.as_deref() }
+    pub fn toast_message(&self) -> Option<&str> {
+        self.toast.as_deref()
+    }
 
     pub fn tick(&mut self) {
         if self.toast_ticks > 0 {
@@ -132,7 +144,9 @@ impl App {
     }
 
     pub fn selected_field(&self, field: GetField) -> Option<String> {
-        if self.filtered.is_empty() { return None; }
+        if self.filtered.is_empty() {
+            return None;
+        }
         let idx = self.filtered[self.selected];
         let e = &self.entries[idx];
         match field {
@@ -143,13 +157,19 @@ impl App {
     }
 
     pub fn selected_label(&self) -> Option<String> {
-        if self.filtered.is_empty() { return None; }
+        if self.filtered.is_empty() {
+            return None;
+        }
         Some(self.entries[self.filtered[self.selected]].label.clone())
     }
 
     // View navigation
-    pub fn enter_details(&mut self) { self.view = View::Details; }
-    pub fn back_to_list(&mut self) { self.view = View::List; }
+    pub fn enter_details(&mut self) {
+        self.view = View::Details;
+    }
+    pub fn back_to_list(&mut self) {
+        self.view = View::List;
+    }
 
     pub fn enter_add(&mut self) {
         self.view = View::AddModal;
@@ -166,28 +186,36 @@ impl App {
         if let Some(idx) = self.filtered.get(self.selected).cloned() {
             let e = &self.entries[idx];
             self.form_label = e.label.clone();
-            self.form_user = e.username.as_ref().map(|s| s.expose_secret().to_string()).unwrap_or_default();
+            self.form_user = e
+                .username
+                .as_ref()
+                .map(|s| s.expose_secret().to_string())
+                .unwrap_or_default();
             self.form_notes = e.notes.clone().unwrap_or_default();
             self.form_original_label = e.label.clone();
         }
     }
 
-    pub fn enter_confirm_delete(&mut self) { self.view = View::ConfirmDelete; }
-    pub fn cancel_confirm_delete(&mut self) { self.view = View::Details; }
+    pub fn enter_confirm_delete(&mut self) {
+        self.view = View::ConfirmDelete;
+    }
+    pub fn cancel_confirm_delete(&mut self) {
+        self.view = View::Details;
+    }
 
     // Form editing
     pub fn next_field(&mut self) {
         self.form_field = match self.form_field {
             FormField::Label => FormField::User,
             FormField::User => FormField::Notes,
-            FormField::Notes => FormField::Label
+            FormField::Notes => FormField::Label,
         };
     }
     pub fn prev_field(&mut self) {
         self.form_field = match self.form_field {
             FormField::Label => FormField::Notes,
             FormField::User => FormField::Label,
-            FormField::Notes => FormField::User
+            FormField::Notes => FormField::User,
         };
     }
     pub fn update_form_char(&mut self, c: char) {
@@ -199,12 +227,20 @@ impl App {
     }
     pub fn backspace_form(&mut self) {
         match self.form_field {
-            FormField::Label => { self.form_label.pop(); }
-            FormField::User => { self.form_user.pop(); }
-            FormField::Notes => { self.form_notes.pop(); }
+            FormField::Label => {
+                self.form_label.pop();
+            }
+            FormField::User => {
+                self.form_user.pop();
+            }
+            FormField::Notes => {
+                self.form_notes.pop();
+            }
         }
     }
-    pub fn cancel_modal(&mut self) { self.view = View::List; }
+    pub fn cancel_modal(&mut self) {
+        self.view = View::List;
+    }
 }
 
 #[cfg(test)]
@@ -213,7 +249,12 @@ mod tests {
     use secrecy::SecretString;
 
     fn make(label: &str) -> VaultEntry {
-        VaultEntry { label: label.into(), username: None, password: SecretString::new("x".into()), notes: None }
+        VaultEntry {
+            label: label.into(),
+            username: None,
+            password: SecretString::new("x".into()),
+            notes: None,
+        }
     }
 
     #[test]

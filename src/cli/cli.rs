@@ -1,11 +1,20 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 const KEVI_LONG_VERSION: &str = concat!(
-"version: ", env!("CARGO_PKG_VERSION"), "\n",
-"git sha: ", env!("KEVI_GIT_SHA"), "\n",
-"build time (UTC): ", env!("KEVI_BUILD_TIME"), "\n",
-"target: ", env!("KEVI_TARGET"), "\n",
-"features: ", env!("KEVI_FEATURES")
+    "version: ",
+    env!("CARGO_PKG_VERSION"),
+    "\n",
+    "git sha: ",
+    env!("KEVI_GIT_SHA"),
+    "\n",
+    "build time (UTC): ",
+    env!("KEVI_BUILD_TIME"),
+    "\n",
+    "target: ",
+    env!("KEVI_TARGET"),
+    "\n",
+    "features: ",
+    env!("KEVI_FEATURES")
 );
 
 #[derive(Parser)]

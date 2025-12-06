@@ -2,7 +2,7 @@ use kevi::config::config::Config;
 use kevi::core::vault::Vault;
 use std::env;
 use std::fs;
-#[cfg(unix)]
+#[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
 use tempfile::tempdir;
 
@@ -22,7 +22,7 @@ async fn test_init_creates_encrypted_vault() {
     let bytes = fs::read(&path).unwrap();
     assert!(bytes.starts_with(b"KEVI"), "vault file must start with KEVI header");
 
-    #[cfg(unix)]
+    #[cfg(target_family = "unix")]
     {
         let meta = fs::metadata(&path).unwrap();
         let mode = meta.permissions().mode() & 0o777;

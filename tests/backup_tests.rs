@@ -3,7 +3,7 @@ use kevi::core::entry::VaultEntry;
 use kevi::core::store::save_vault_file;
 use secrecy::SecretString;
 use std::fs;
-#[cfg(unix)]
+#[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use tempfile::tempdir;
@@ -73,7 +73,7 @@ fn rotating_backups_keep_two_versions_and_prune() {
     assert!(!b3.exists(), ".3 should be pruned");
 
     // On Unix, backups must have 0600 perms
-    #[cfg(unix)]
+    #[cfg(target_family = "unix")]
     {
         let mode1 = fs::metadata(&b1).unwrap().permissions().mode() & 0o777;
         let mode2 = fs::metadata(&b2).unwrap().permissions().mode() & 0o777;

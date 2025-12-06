@@ -8,7 +8,7 @@ use anyhow::Result;
 
 #[inline]
 pub fn lock_slice(_data: &mut [u8]) -> Result<()> {
-    #[cfg(all(unix, feature = "memlock"))]
+    #[cfg(all(target_family = "unix", feature = "memlock"))]
     {
         // Safety: libc::mlock reads the pointer and length; it does not take
         // ownership. The kernel rounds to page boundaries.
@@ -26,7 +26,7 @@ pub fn lock_slice(_data: &mut [u8]) -> Result<()> {
 
 #[inline]
 pub fn unlock_slice(_data: &mut [u8]) -> Result<()> {
-    #[cfg(all(unix, feature = "memlock"))]
+    #[cfg(all(target_family = "unix", feature = "memlock"))]
     {
         let ptr = _data.as_ptr() as *const core::ffi::c_void;
         let len = _data.len();

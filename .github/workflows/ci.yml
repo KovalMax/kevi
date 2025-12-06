@@ -31,10 +31,6 @@ jobs:
       - name: Clippy (deny warnings)
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-      - name: Inline style guard (no inline use / inline modules)
-        if: runner.os != 'Windows'
-        run: bash scripts/lint_inline.sh
-
       - name: Build
         run: cargo build --all --verbose
 

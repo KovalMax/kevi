@@ -3,7 +3,7 @@ use kevi::core::crypto::KeviHeader;
 use kevi::core::crypto::{default_params, derive_key_argon2id, AEAD_AES256GCM, HEADER_VERSION, KDF_ARGON2ID, NONCE_LEN};
 use kevi::core::dk_session::{clear_dk_session, dk_session_file_for, read_dk_session, write_dk_session};
 use secrecy::{ExposeSecret, SecretBox};
-#[cfg(unix)]
+#[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 use tempfile::tempdir;
@@ -31,7 +31,7 @@ fn dk_session_write_read_and_expire() {
     assert_eq!(got.key.expose_secret().len(), 32);
 
     // On Unix, file perms should be 0600
-    #[cfg(unix)]
+    #[cfg(target_family = "unix")]
     {
         let meta = std::fs::metadata(&sess_path).unwrap();
         let mode = meta.permissions().mode() & 0o777;

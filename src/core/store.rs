@@ -30,11 +30,14 @@ pub fn load_vault_file(path: &Path, password: &str) -> Result<Vec<VaultEntry>> {
     }
 
     // Encrypted container
-    let data = decrypt_vault(&buf, password).context("Failed to decrypt vault (wrong password?)")?;
+    let data =
+        decrypt_vault(&buf, password).context("Failed to decrypt vault (wrong password?)")?;
 
     // Interpret as UTF-8 RON
-    let contents = String::from_utf8(data).map_err(|_| anyhow!("vault content not valid UTF-8 RON"))?;
-    let vault: Vec<VaultEntry> = ron::from_str(&contents).context("Failed to parse vault content")?;
+    let contents =
+        String::from_utf8(data).map_err(|_| anyhow!("vault content not valid UTF-8 RON"))?;
+    let vault: Vec<VaultEntry> =
+        ron::from_str(&contents).context("Failed to parse vault content")?;
     Ok(vault)
 }
 

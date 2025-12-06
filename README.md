@@ -6,8 +6,8 @@ derived‑key session cache is available to reduce prompts without storing the p
 
 ## Features
 
-- Encrypted vault with authenticated header (Argon2id + AES‑256‑GCM)
-- Strong file handling: atomic writes, strict permissions, rotating encrypted backups
+- Encrypted vault with an authenticated header (Argon2id + AES‑256‑GCM)
+- Strong file handling: atomically writes, strict permissions, rotating encrypted backups
 - Clipboard copy with TTL and previous content restore (safe‑by‑default, no secret stdout)
 - Session unlock/lock with derived‑key cache (bound to header params + salt; never stores the passphrase)
 - Generator: strong passwords (char‑mode) and passphrases (bundled curated wordlist), with configurable defaults
@@ -40,16 +40,16 @@ Releases:
 
 ```
 # Initialize a new vault
-KEVI_PASSWORD="master-pass" kevi init --path ~/.kevi/vault.ron
+kevi init --path ~/.kevi/vault.ron
 
 # Add an entry (interactive)
-KEVI_PASSWORD="master-pass" kevi add --path ~/.kevi/vault.ron
+kevi add --path ~/.kevi/vault.ron
 
 # Get (copy to clipboard, default TTL 20s; prints nothing by default)
-KEVI_PASSWORD="master-pass" kevi get my-label --path ~/.kevi/vault.ron
+kevi get my-label --path ~/.kevi/vault.ron
 
 # Echo the field to stdout without copying (for safe piping)
-KEVI_PASSWORD="master-pass" kevi get my-label --no-copy --echo --path ~/.kevi/vault.ron
+kevi get my-label --no-copy --echo --path ~/.kevi/vault.ron
 ```
 
 ## Commands
@@ -57,11 +57,8 @@ KEVI_PASSWORD="master-pass" kevi get my-label --no-copy --echo --path ~/.kevi/va
 - `kevi init [--path <vault>]` — create a new encrypted vault
 - `kevi get <label> [--path <vault>] [--field password|user|notes] [--no-copy] [--echo] [--ttl SECONDS] [--once]` —
   retrieve/copy a field; `--once` bypasses session cache
--
-
-`kevi add [--path <vault>] [--generate [--length N | --passphrase --words N --sep SEP] --no-lower --no-upper --no-digits --no-symbols --allow_ambiguous] [--label L --user U --notes N]` —
+- `kevi add [--path <vault>] [--generate [--length N | --passphrase --words N --sep SEP] --no-lower --no-upper --no-digits --no-symbols --allow_ambiguous] [--label L --user U --notes N]` —
 add an entry
-
 - `kevi rm <label> [--path <vault>] [--yes]` — remove an entry (asks for confirmation unless `--yes`)
 - `kevi list [--path <vault>] [--show-users] [--query <substr>] [--json]` — list labels (and usernames if requested),
   filterable and machine‑readable
@@ -149,8 +146,7 @@ Prints version, KDF/AEAD ids, Argon2 params, salt/nonce (hex). No plaintext secr
 
 ## Development
 
-CI enforces: `cargo fmt --check`, `clippy -D warnings`, tests, and `cargo audit`. A script prevents inline `use`
-statements and inline module bodies (except `mod tests {}`) in `src/`.
+CI enforces: `cargo fmt --check`, `clippy -D warnings`, tests, and `cargo audit`.
 
 Optional hardening:
 

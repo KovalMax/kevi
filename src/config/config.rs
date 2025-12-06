@@ -55,10 +55,19 @@ impl Config {
             .or(file_cfg.backups);
 
         // 5) Generator defaults precedence: env > config file > None
-        let gen_len = env::var("KEVI_GEN_LENGTH").ok().and_then(|s| s.parse::<u16>().ok()).or(file_cfg.generator_length);
-        let gen_words = env::var("KEVI_GEN_WORDS").ok().and_then(|s| s.parse::<u16>().ok()).or(file_cfg.generator_words);
+        let gen_len = env::var("KEVI_GEN_LENGTH")
+            .ok()
+            .and_then(|s| s.parse::<u16>().ok())
+            .or(file_cfg.generator_length);
+        let gen_words = env::var("KEVI_GEN_WORDS")
+            .ok()
+            .and_then(|s| s.parse::<u16>().ok())
+            .or(file_cfg.generator_words);
         let gen_sep = env::var("KEVI_GEN_SEP").ok().or(file_cfg.generator_sep);
-        let avoid_amb = env::var("KEVI_AVOID_AMBIGUOUS").ok().and_then(|s| s.parse::<bool>().ok()).or(file_cfg.avoid_ambiguous);
+        let avoid_amb = env::var("KEVI_AVOID_AMBIGUOUS")
+            .ok()
+            .and_then(|s| s.parse::<bool>().ok())
+            .or(file_cfg.avoid_ambiguous);
 
         Config {
             vault_path,

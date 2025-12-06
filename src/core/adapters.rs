@@ -1,4 +1,6 @@
-use crate::core::crypto::{derive_key_argon2id, header_fingerprint_excluding_nonce, KeviHeader, KEY_LEN};
+use crate::core::crypto::{
+    derive_key_argon2id, header_fingerprint_excluding_nonce, KeviHeader, KEY_LEN,
+};
 use crate::core::dk_session::{dk_session_file_for, read_dk_session, write_dk_session};
 use crate::core::entry::VaultEntry;
 use crate::core::ports::{ByteStore, DerivedKey, KeyResolver, VaultCodec};
@@ -44,7 +46,9 @@ impl FileByteStore {
     }
 
     /// Preferred: construct with explicit backups count to avoid env coupling.
-    pub fn new_with_backups(path: PathBuf, backups: usize) -> Self { Self { path, backups } }
+    pub fn new_with_backups(path: PathBuf, backups: usize) -> Self {
+        Self { path, backups }
+    }
 }
 
 impl ByteStore for FileByteStore {
@@ -67,14 +71,18 @@ impl ByteStore for FileByteStore {
 // ===== Derived-key resolver bound to header params/salt =====
 pub struct CachedKeyResolver {
     dk_session_path: PathBuf,
-    // For deriving when cache miss
-    // Uses env var KEVI_PASSWORD or interactive prompt via inquire
+    // For deriving when a cache is missed
+    // Uses env var KEVI_PASSWORD or interactive prompt
 }
+
+impl PasswordResolver for CachedKeyResolver {}
 
 impl CachedKeyResolver {
     pub fn new(vault_path: PathBuf) -> Self {
         let dk = dk_session_file_for(&vault_path);
-        Self { dk_session_path: dk }
+        Self {
+            dk_session_path: dk,
+        }
     }
 }
 
@@ -86,29 +94,39 @@ impl KeyResolver for CachedKeyResolver {
                 let vec = sess.key.expose_secret().clone();
                 let mut arr = [0u8; KEY_LEN];
                 arr.copy_from_slice(&vec[..KEY_LEN]);
-                return Ok(DerivedKey { key: SecretBox::new(Box::new(arr.to_vec())) });
+                return Ok(DerivedKey {
+                    key: SecretBox::new(Box::new(arr.to_vec())),
+                });
             }
         }
         // Cache miss: derive from passphrase
-        let pw = if let Ok(pw) = env::var("KEVI_PASSWORD") { pw } else {
-            // Lazy import to avoid forcing to inquire on all builds
-            inquire::Password::new("Master password").without_confirmation().prompt()?
-        };
+        let pw = self.resolve_password();
         let key_arr = derive_key_argon2id(&pw, &hdr.salt, hdr.m_cost_kib, hdr.t_cost, hdr.p_lanes)?;
         let key_vec = SecretBox::new(Box::new(key_arr.to_vec()));
         // Default TTL: 900s unless KEVI_UNLOCK_TTL provided
-        let ttl_secs = env::var("KEVI_UNLOCK_TTL").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(900);
-        write_dk_session(&self.dk_session_path, &fp, &key_vec, std::time::Duration::from_secs(ttl_secs))?;
+        let ttl_secs = env::var("KEVI_UNLOCK_TTL")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(900);
+        write_dk_session(
+            &self.dk_session_path,
+            &fp,
+            &key_vec,
+            std::time::Duration::from_secs(ttl_secs),
+        )?;
         Ok(DerivedKey { key: key_vec })
     }
 
-    fn resolve_for_new_vault(&self, params: crate::core::ports::HeaderParams, salt: [u8; 16]) -> Result<DerivedKey> {
+    fn resolve_for_new_vault(
+        &self,
+        params: crate::core::ports::HeaderParams,
+        salt: [u8; 16],
+    ) -> Result<DerivedKey> {
         // For new vaults, prompt/env to get passphrase and derive key with provided params+salt,
         // compute a pseudo-header to fingerprint (nonce excluded)
-        let pw = if let Ok(pw) = env::var("KEVI_PASSWORD") { pw } else {
-            inquire::Password::new("Master password").without_confirmation().prompt()?
-        };
-        let key_arr = derive_key_argon2id(&pw, &salt, params.m_cost_kib, params.t_cost, params.p_lanes)?;
+        let pw = self.resolve_password();
+        let key_arr =
+            derive_key_argon2id(&pw, &salt, params.m_cost_kib, params.t_cost, params.p_lanes)?;
         let key_vec = SecretBox::new(Box::new(key_arr.to_vec()));
         let hdr = KeviHeader {
             version: crate::core::crypto::HEADER_VERSION,
@@ -121,8 +139,16 @@ impl KeyResolver for CachedKeyResolver {
             nonce: [0u8; crate::core::crypto::NONCE_LEN],
         };
         let fp = header_fingerprint_excluding_nonce(&hdr);
-        let ttl_secs = env::var("KEVI_UNLOCK_TTL").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(900);
-        write_dk_session(&self.dk_session_path, &fp, &key_vec, std::time::Duration::from_secs(ttl_secs))?;
+        let ttl_secs = env::var("KEVI_UNLOCK_TTL")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(900);
+        write_dk_session(
+            &self.dk_session_path,
+            &fp,
+            &key_vec,
+            std::time::Duration::from_secs(ttl_secs),
+        )?;
         Ok(DerivedKey { key: key_vec })
     }
 }
@@ -130,24 +156,53 @@ impl KeyResolver for CachedKeyResolver {
 /// A resolver that always derives from a passphrase and never reads/writes the dk-session cache.
 pub struct BypassKeyResolver;
 
+impl PasswordResolver for BypassKeyResolver {}
+
 impl BypassKeyResolver {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl KeyResolver for BypassKeyResolver {
     fn resolve_for_header(&self, hdr: &KeviHeader) -> Result<DerivedKey> {
-        let pw = if let Ok(pw) = env::var("KEVI_PASSWORD") { pw } else {
-            inquire::Password::new("Master password").without_confirmation().prompt()?
-        };
+        let pw = self.resolve_password();
         let key_arr = derive_key_argon2id(&pw, &hdr.salt, hdr.m_cost_kib, hdr.t_cost, hdr.p_lanes)?;
-        Ok(DerivedKey { key: SecretBox::new(Box::new(key_arr.to_vec())) })
+        Ok(DerivedKey {
+            key: SecretBox::new(Box::new(key_arr.to_vec())),
+        })
     }
 
-    fn resolve_for_new_vault(&self, params: crate::core::ports::HeaderParams, salt: [u8; 16]) -> Result<DerivedKey> {
-        let pw = if let Ok(pw) = env::var("KEVI_PASSWORD") { pw } else {
-            inquire::Password::new("Master password").without_confirmation().prompt()?
+    fn resolve_for_new_vault(
+        &self,
+        params: crate::core::ports::HeaderParams,
+        salt: [u8; 16],
+    ) -> Result<DerivedKey> {
+        let pw = if let Ok(pw) = env::var("KEVI_PASSWORD") {
+            pw
+        } else {
+            inquire::Password::new("Master password")
+                .without_confirmation()
+                .prompt()?
         };
-        let key_arr = derive_key_argon2id(&pw, &salt, params.m_cost_kib, params.t_cost, params.p_lanes)?;
-        Ok(DerivedKey { key: SecretBox::new(Box::new(key_arr.to_vec())) })
+        let key_arr =
+            derive_key_argon2id(&pw, &salt, params.m_cost_kib, params.t_cost, params.p_lanes)?;
+        Ok(DerivedKey {
+            key: SecretBox::new(Box::new(key_arr.to_vec())),
+        })
+    }
+}
+
+pub trait PasswordResolver {
+    fn resolve_password(&self) -> String {
+        let pw = if let Ok(pw) = env::var("KEVI_PASSWORD") {
+            pw
+        } else {
+            inquire::Password::new("Master password")
+                .without_confirmation()
+                .prompt()
+                .unwrap()
+        };
+        pw
     }
 }

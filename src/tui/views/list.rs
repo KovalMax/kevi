@@ -14,10 +14,10 @@ pub fn render_list(f: &mut Frame, app: &App) {
             Constraint::Length(1), // search / hint
             Constraint::Min(1),    // list
             Constraint::Length(1), // footer/toast
-        ]).split(f.area());
+        ])
+        .split(f.area());
 
-    let title = Paragraph::new("Kevi — Secure Vault (TUI)")
-        .style(theme.title_style());
+    let title = Paragraph::new("Kevi — Secure Vault (TUI)").style(theme.title_style());
     f.render_widget(title, chunks[0]);
 
     let search_label = match app.mode {
@@ -29,19 +29,28 @@ pub fn render_list(f: &mut Frame, app: &App) {
 
     // Build items (labels only; never render secrets). Add a visible cursor marker for selection.
     let labels = app.visible_labels();
-    let items: Vec<ListItem> = labels.iter().enumerate().map(|(i, lbl)| {
-        let is_sel = i == app.selected;
-        let style = if is_sel { theme.selection_style() } else { theme.normal_style() };
-        let marker = if is_sel { "> " } else { "  " };
-        let line = Line::from(format!("{}{}", marker, lbl));
-        ListItem::new(line).style(style)
-    }).collect();
+    let items: Vec<ListItem> = labels
+        .iter()
+        .enumerate()
+        .map(|(i, lbl)| {
+            let is_sel = i == app.selected;
+            let style = if is_sel {
+                theme.selection_style()
+            } else {
+                theme.normal_style()
+            };
+            let marker = if is_sel { "> " } else { "  " };
+            let line = Line::from(format!("{}{}", marker, lbl));
+            ListItem::new(line).style(style)
+        })
+        .collect();
 
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Entries"));
+    let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Entries"));
     f.render_widget(list, chunks[2]);
 
-    let footer_text = app.toast_message().unwrap_or("q=quit  j/k or arrows=move  (> marks selection)  Enter=copy password  u=copy user");
+    let footer_text = app.toast_message().unwrap_or(
+        "q=quit  j/k or arrows=move  (> marks selection)  Enter=copy password  u=copy user",
+    );
     let footer = Paragraph::new(footer_text).style(theme.toast_style());
     f.render_widget(footer, chunks[3]);
 }
