@@ -1,175 +1,471 @@
-# Kevi — Secure CLI Vault
+Kevi — encrypted CLI vault and TUI password manager
+===================================================
 
-Kevi is a secure command‑line key/secret vault. Secrets are encrypted at rest using Argon2id key derivation and
-AES‑256‑GCM with an authenticated header. Clipboard operations auto‑clear after a TTL. A minimal TUI is included. A
-derived‑key session cache is available to reduce prompts without storing the passphrase.
+Kevi is a local, file‑based password and secrets vault focused on:
 
-## Features
+* **Strong, modern cryptography** (Argon2id + AES‑256‑GCM)
+* **Simple CLI workflows** for scripting and automation
+* A **terminal user interface (TUI)** for interactive browsing
+* Careful handling of in‑memory secrets and clipboard usage
 
-- Encrypted vault with an authenticated header (Argon2id + AES‑256‑GCM)
-- Strong file handling: atomically writes, strict permissions, rotating encrypted backups
-- Clipboard copy with TTL and previous content restore (safe‑by‑default, no secret stdout)
-- Session unlock/lock with derived‑key cache (bound to header params + salt; never stores the passphrase)
-- Generator: strong passwords (char‑mode) and passphrases (bundled curated wordlist), with configurable defaults
-- Minimal TUI: list/search, copy password/username (never renders secrets)
+Kevi does **not** try to be a cloud sync solution. It is designed as a
+single‑machine (or manually synced) vault for users who prefer having
+full control over their secret storage.
 
-## Install
+> For a detailed description of the cryptography, threat model, and
+> operational security guidance, see [`SECURITY.md`](SECURITY.md).
 
-```
+
+Features
+--------
+
+* Encrypted vault file with a simple binary format starting with the
+  magic header `KEVI`.
+* Password‑based key derivation using **Argon2id** with conservative
+  defaults (64 MiB memory, 3 iterations, 1 lane).
+* Authenticated encryption using **AES‑256‑GCM** via the `ring` crate.
+* **CLI** commands for adding, listing, querying, and retrieving
+  secrets.
+* **TUI** (terminal UI) for interactive navigation and quick copying
+  to clipboard.
+* **Clipboard integration** with configurable time‑to‑live (TTL).
+* Derived‑key **session caching** (optional) to avoid re‑typing the
+  master passphrase repeatedly.
+
+
+Installation
+------------
+
+### Prerequisites
+
+* Rust toolchain (stable) and Cargo. You can install them via
+  <https://rustup.rs/>.
+
+Kevi is a regular Rust binary crate. You can install it from the
+project directory or, if published, directly from crates.io.
+
+### Install from source (this repository)
+
+Clone the repository and run:
+
+```bash
 cargo install --path .
-# or run from source
-cargo run -- <command>
 ```
 
-Releases:
+This will build and install a `kevi` binary into your Cargo
+`bin` directory (usually `~/.cargo/bin`). Make sure this directory is
+on your `PATH`.
 
-- Tagged builds publish artifacts for Linux/macOS/Windows (see GitHub Releases).
-- Each archive includes a stripped binary, SBOM (CycloneDX, Linux build), and SHA256 checksums.
-- Verify build metadata:
-  ```
-  kevi --version
-  # example output:
-  # version: 0.1.0
-  # git sha: abcdef123456
-  # build time (UTC): 2025-12-03T12:00:00Z
-  # target: x86_64-unknown-linux-gnu
-  # features: default
-  ```
+You can also run Kevi without installing it globally:
 
-## Quick start
-
-```
-# Initialize a new vault
-kevi init --path ~/.kevi/vault.ron
-
-# Add an entry (interactive)
-kevi add --path ~/.kevi/vault.ron
-
-# Get (copy to clipboard, default TTL 20s; prints nothing by default)
-kevi get my-label --path ~/.kevi/vault.ron
-
-# Echo the field to stdout without copying (for safe piping)
-kevi get my-label --no-copy --echo --path ~/.kevi/vault.ron
+```bash
+cargo run -- <args...>
 ```
 
-## Commands
 
-- `kevi init [--path <vault>]` — create a new encrypted vault
-- `kevi get <label> [--path <vault>] [--field password|user|notes] [--no-copy] [--echo] [--ttl SECONDS] [--once]` —
-  retrieve/copy a field; `--once` bypasses session cache
-- `kevi add [--path <vault>] [--generate [--length N | --passphrase --words N --sep SEP] --no-lower --no-upper --no-digits --no-symbols --allow_ambiguous] [--label L --user U --notes N]` —
-add an entry
-- `kevi rm <label> [--path <vault>] [--yes]` — remove an entry (asks for confirmation unless `--yes`)
-- `kevi list [--path <vault>] [--show-users] [--query <substr>] [--json]` — list labels (and usernames if requested),
-  filterable and machine‑readable
-- `kevi unlock [--path <vault>] [--ttl SECONDS]` — cache a derived key for a TTL (header‑bound)
-- `kevi lock [--path <vault>]` — clear the derived‑key session cache
-- `kevi header [--path <vault>]` — print parsed header (no secrets)
-- `kevi tui [--path <vault>]` — launch the minimal terminal UI
+Concepts
+--------
 
-## Clipboard behavior
+### Vault
 
-- Default TTL: 20s
-- Precedence for TTL in `get`: `--ttl` > `KEVI_CLIP_TTL` > config file > default (20)
-- Auto‑restores previous clipboard content after the TTL
-- Best‑effort warning in SSH/headless environments (no secrets are printed automatically); consider `--no-copy --echo`
-  for piping
+All secrets live in a single **vault file**, which is an encrypted
+binary file written in the Kevi format. The vault contains a list of
+"entries", each with:
 
-## Configuration and paths
+* A **label** (name)
+* An optional **username**
+* A **password** (or other secret string)
+* Optional **notes**
 
-Kevi loads `config.toml` from the platform config dir (override with `KEVI_CONFIG_DIR`). Default vault lives under
-platform data dir (override base with `KEVI_DATA_DIR`).
+The vault is encrypted with a key derived from your **master
+password** using Argon2id. The key and vault contents are never stored
+in plaintext on disk.
 
-Config file example:
+### Entries
 
+An entry is a single named record in the vault, identified by its
+label. You typically use labels like `github`, `email`, `bank`, etc.
+
+For example, an entry might look like:
+
+* label: `github`
+* username: `alice`
+* password: `...`
+* notes: `personal account`
+
+### Clipboard and echoing
+
+Kevi encourages workflows where your actual secrets are kept off the
+terminal screen as much as practical:
+
+* By default, when you `get` an entry, Kevi will **copy the
+  requested field (usually the password) to the clipboard** and show a
+  small textual confirmation.
+* You can use `--echo` to print a field to standard output (for
+  scripts or when clipboard is not available).
+* You can use `--no-copy` to avoid touching the clipboard.
+
+See the usage examples below for concrete combinations.
+
+### Configuration and vault location
+
+Kevi uses a configuration file to find the default vault path and
+other options. On Unix‑like systems, the config lives in
+
+```text
+$XDG_CONFIG_HOME/kevi/config.toml
 ```
-# ~/.config/kevi/config.toml (Linux/macOS) or %APPDATA%\kevi\config.toml (Windows)
-vault_path = "/home/me/.kevi/vault.ron"
-clipboard_ttl = 45
+
+If `XDG_CONFIG_HOME` is not set, a platform‑specific default config
+directory is used (for example `~/.config/kevi/config.toml` on many
+Linux distributions). Similar conventions apply on macOS and Windows
+via the `dirs` crate.
+
+You can override configuration via **command‑line flags** or
+**environment variables**:
+
+* `--path` – explicit path to the vault file for a command.
+* `KEVI_VAULT_PATH` – environment variable specifying a default vault
+  path.
+* `KEVI_CONFIG_DIR` – override the config directory.
+* `KEVI_DATA_DIR` – override the data directory (where the default
+  vault is stored).
+
+There are additional environment variables for clipboard TTL and
+generator defaults; see the configuration section below.
+
+
+Quick start
+-----------
+
+### 1. Initialize a new vault
+
+```bash
+kevi init --path /path/to/my-vault.ron
+```
+
+You will be prompted for a master password. Choose a strong phrase
+that you can remember.
+
+If you omit `--path`, Kevi will use the default vault path, which is
+derived from the configuration and data directory.
+
+### 2. Add an entry
+
+```bash
+kevi add my-site \
+  --user alice \
+  --password 's3cret' \
+  --notes 'personal account' \
+  --path /path/to/my-vault.ron
+```
+
+You can also tell Kevi to generate a random password instead of
+supplying one explicitly; see the `add` command help.
+
+### 3. Get an entry’s password (clipboard)
+
+```bash
+kevi get my-site --field password --path /path/to/my-vault.ron
+```
+
+By default, this will:
+
+* Decrypt the vault using your master password.
+* Find the `my-site` entry.
+* Copy the password to the clipboard for a configured duration.
+
+### 4. Get and print a field (no clipboard)
+
+```bash
+kevi get my-site --field password --echo --no-copy --path /path/to/my-vault.ron
+```
+
+This:
+
+* **Prints** the password to standard output.
+* Does **not** copy anything to the clipboard.
+
+You can substitute `--field user` or `--field notes` to print the
+username or notes instead.
+
+### 5. Launch the TUI
+
+```bash
+kevi tui --path /path/to/my-vault.ron
+```
+
+This opens an interactive terminal UI where you can search, select,
+and copy fields. See below for key bindings.
+
+
+CLI usage
+---------
+
+The CLI uses standard Unix‑style subcommands. You can always run:
+
+```bash
+kevi --help
+kevi <subcommand> --help
+```
+
+for up‑to‑date usage information.
+
+### Global options
+
+Common global options include:
+
+* `--path <FILE>` – path to the vault file (overrides config/env).
+* `--version` – print version information, including git SHA,
+  build time, target triple, and enabled features.
+
+### Important subcommands
+
+The exact set may evolve, but typical commands include:
+
+* `init` – create a new vault file and set a master password.
+* `add` – add a new entry (interactive or from flags).
+* `rm` – remove an entry by label.
+* `list` – list entries, optionally filtering by query and
+  outputting JSON.
+* `get` – retrieve a specific field from an entry, optionally copying
+  to clipboard or echoing to stdout.
+* `unlock` – pre‑derive and cache a key in a short‑lived session
+  file so subsequent operations do not prompt for the password.
+* `lock` – clear the cached derived‑key session.
+* `header` – inspect the vault header (version, parameters) without
+  decrypting contents.
+* `tui` – launch the terminal user interface.
+
+#### `init`
+
+Create a new vault file:
+
+```bash
+kevi init [--path <FILE>]
+```
+
+Options commonly include:
+
+* `--path` – where to create the vault; if omitted, the default path
+  from the configuration is used.
+
+#### `add`
+
+Add a new entry:
+
+```bash
+kevi add <label> [--user <USERNAME>] [--password <PASS>] [--generate] [--length N]
+```
+
+Typical options:
+
+* `--user` – set the username.
+* `--password` – provide an explicit password.
+* `--generate` – generate a random password using the built‑in
+  generator.
+* `--length` – length for generated passwords.
+
+If neither `--password` nor `--generate` is supplied, Kevi may prompt
+you interactively (depending on CLI behavior).
+
+#### `get`
+
+Retrieve a field from an entry:
+
+```bash
+kevi get <label> --field <password|user|notes> [--no-copy] [--echo]
+```
+
+Behaviors:
+
+* Without `--no-copy`, the field is copied to the clipboard.
+* With `--echo`, the field is printed to stdout.
+* You can combine `--echo` and `--no-copy` to avoid clipboard usage
+  entirely.
+
+Example:
+
+```bash
+kevi get github --field password --echo --no-copy
+```
+
+#### `list`
+
+List entries in the vault:
+
+```bash
+kevi list [--query <TERM>] [--show-users] [--json]
+```
+
+Options:
+
+* `--query` – filter labels by a case‑insensitive substring.
+* `--show-users` – include usernames in the output.
+* `--json` – output machine‑readable JSON instead of human text.
+
+#### `unlock` and `lock`
+
+Kevi supports caching a derived key in a session file to avoid
+repeatedly entering your master password.
+
+```bash
+kevi unlock [--ttl <SECONDS>]
+kevi lock
+```
+
+* `unlock` derives a key from your password, binds it to the vault
+  header via a fingerprint, and stores it in a small session file with
+  a TTL.
+* `lock` removes the session file so future operations will prompt for
+  the password again.
+
+Session files are stored with restrictive file permissions on
+Unix‑like systems; see `SECURITY.md` for details.
+
+
+TUI usage
+---------
+
+Run:
+
+```bash
+kevi tui [--path <FILE>]
+```
+
+This opens an interactive TUI built on top of the `ratatui` and
+`crossterm` crates. Exact key bindings may evolve, but typical
+behaviors include:
+
+* **Navigation** – use arrow keys, `j/k`, or PageUp/PageDown to move
+  through the list of entries.
+* **Search/filter** – start typing or use a dedicated search key to
+  filter by label.
+* **Copy password** – press `Enter` on a selected entry to copy its
+  password to the clipboard; a short message appears indicating the
+  clipboard TTL.
+* **Copy username** – press `u` to copy the username of the selected
+  entry to the clipboard.
+* **Details view** – open a detailed view of an entry showing label,
+  username, notes, and a masked password. Future versions may support
+  an explicit reveal toggle.
+
+The TUI is designed to avoid printing passwords to the screen by
+default; operations are oriented around copying to the clipboard.
+
+
+Configuration
+-------------
+
+The configuration file is a TOML document, for example:
+
+```toml
+vault_path = "/home/alice/.local/share/kevi/vault.ron"
+clipboard_ttl_secs = 30
 backups = 3
-# Generator defaults (optional; can be overridden by KEVI_GEN_* env vars or CLI flags)
-generator_length = 28
-generator_words = 6
-generator_sep = ":"
-avoid_ambiguous = true
+
+[generator]
+length = 24
+include_digits = true
+include_upper = true
+include_lower = true
+include_symbols = true
 ```
 
-Precedence rules:
+Typical fields include:
 
-- Vault path: CLI `--path` > `KEVI_VAULT_PATH` > config file > default (from data dir)
-- Clipboard TTL: CLI `--ttl` (in `get`) > `KEVI_CLIP_TTL` > config file > default (20)
-- Backups kept: `KEVI_BACKUPS` > config file > default (2)
-- Generator defaults: CLI flags > `KEVI_GEN_*`/`KEVI_AVOID_AMBIGUOUS` env > config file > internal defaults
+* `vault_path` – default path to the vault file.
+* `clipboard_ttl_secs` – how long secrets stay in the clipboard
+  (approximate; depends on platform support).
+* `backups` – how many historical versions of the vault file to keep
+  when writing.
+* `[generator]` – defaults for password generation.
 
-Related env vars:
+Environment variables can override some of these:
 
-- `KEVI_VAULT_PATH`, `KEVI_CLIP_TTL`, `KEVI_BACKUPS`
-- `KEVI_GEN_LENGTH`, `KEVI_GEN_WORDS`, `KEVI_GEN_SEP`, `KEVI_AVOID_AMBIGUOUS`
-- `KEVI_CONFIG_DIR` (override config location), `KEVI_DATA_DIR` (override data root for default vault)
+* `KEVI_VAULT_PATH` – override `vault_path`.
+* `KEVI_CLIP_TTL` – override `clipboard_ttl_secs`.
+* `KEVI_BACKUPS` – override `backups`.
+* `KEVI_GEN_LENGTH`, `KEVI_GEN_*` – override password generator
+  defaults.
 
-## Backups
+See `SECURITY.md` for operational advice on choosing clipboard TTLs
+and backup settings.
 
-Rotating, encrypted backups are kept as `<vault>.1`, `<vault>.2`, … up to a configured count (default 2).
 
-- Preferred: set `backups` in `~/.config/kevi/config.toml`.
-- Env override (optional): `KEVI_BACKUPS`.
-- Set to `0` to disable.
+Security overview (short)
+-------------------------
 
-## Security guarantees (short)
+At a high level:
 
-- Data at rest is encrypted with Argon2id (per‑file salt and encoded params) and AES‑256‑GCM.
-- The header is bound as AEAD Associated Data for tamper detection.
-- Unix permissions: directories 0700, files 0600 (best‑effort on other platforms).
-- Derived‑key session cache binds to header params + salt; salt remains stable per vault; only nonce rotates per save.
-- Optional best‑effort memory locking (`--features memlock` on Unix) for derived keys during crypto operations.
-- The TUI never renders secrets; copy actions use TTL and restore previous clipboard.
+* Kevi uses **Argon2id** for password‑based key derivation with
+  parameters tuned for CLI use on modern machines.
+* The vault data is encrypted and authenticated with
+  **AES‑256‑GCM** (via the `ring` crate).
+* The file format starts with a `KEVI` magic header and encodes all
+  cryptographic parameters and a random salt and nonce.
+* In‑memory secrets are stored in types such as `SecretString` from
+  the `secrecy` crate, which aim to reduce accidental leakage.
+* Optional **memlock** support can limit swapping secrets to disk on
+  supported Unix platforms.
+* Clipboard usage is explicit and configurable, with best‑effort
+  clearing after a TTL.
 
-See SECURITY.md for the threat model and limitations.
+For a deep dive into threat model, algorithms, and limitations, see
+[`SECURITY.md`](SECURITY.md).
 
-## TUI
 
-```
-kevi tui --path ~/.kevi/vault.ron
-```
+Development
+-----------
 
-Keybindings: `q` quit, `j/k` or arrows to navigate, `/` search, `Enter` copy password, `u` copy username.
+### Running tests and linters
 
-Theme: NES/SEGA‑inspired palette (blue/red accents on dark background). See `docs/tui.md`.
+From the project root:
 
-## Header inspection
-
-```
-kevi header --path ~/.kevi/vault.ron
-```
-
-Prints version, KDF/AEAD ids, Argon2 params, salt/nonce (hex). No plaintext secrets are revealed.
-
-## Development
-
-CI enforces: `cargo fmt --check`, `clippy -D warnings`, tests, and `cargo audit`.
-
-Optional hardening:
-
-- Build/tests with `memlock` (Linux): `cargo test --features memlock`
-
-Release helpers:
-
-- Local reproducible build script: `scripts/release.sh` (produces stripped binary + SHA256SUMS)
-- CI release workflow runs on tags `v*` and uploads artifacts and checksums; optional signing supported if minisign
-  secret is configured.
-
-### Fuzzing
-
-Kevi includes fuzz targets (optional, for contributors) using `cargo-fuzz`:
-
-```
-cargo install cargo-fuzz
-
-# Header parser should never panic on arbitrary input
-cargo fuzz run fuzz_target_header_parse
-
-# RON decoder robustness
-cargo fuzz run fuzz_target_ron_codec
+```bash
+cargo fmt --all
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all
 ```
 
-See `docs/fuzzing.md` for details. Fuzzing is non-blocking in CI; run it locally for deeper coverage.
+On Linux, you can also run tests with the `memlock` feature enabled:
+
+```bash
+cargo test --all --features memlock
+```
+
+### Code coverage
+
+If you have `cargo-llvm-cov` installed, you can generate coverage
+locally with:
+
+```bash
+cargo llvm-cov --workspace --no-cfg-coverage --html
+```
+
+This will create an HTML report under a `coverage-html` directory.
+
+### Continuous Integration
+
+This repository includes a GitHub Actions workflow that runs:
+
+* `cargo fmt` (format check)
+* `cargo clippy`
+* `cargo build`
+* `cargo test` (with and without `memlock` on Linux)
+* `cargo audit` (via a dedicated job)
+* `cargo-llvm-cov` for coverage reporting
+
+You can mirror these steps locally before pushing changes.
+
+### Contributing
+
+Contributions, bug reports, and feature ideas are welcome. When
+submitting a pull request:
+
+* Run `cargo fmt`, `cargo clippy`, and `cargo test` locally.
+* Try to include tests for new functionality where practical.
+* Avoid logging or printing secrets; prefer redacted debug output.
+
+Please see `SECURITY.md` for expectations around handling sensitive
+data when developing new features.

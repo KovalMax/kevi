@@ -28,7 +28,10 @@ fn vault_path_precedence_cli_over_env_and_file() {
     let td = tempdir().unwrap();
     // Isolate env
     env::set_var("HOME", td.path());
-    env::set_var("KEVI_CONFIG_DIR", td.path().join("cfg").to_string_lossy().to_string());
+    env::set_var(
+        "KEVI_CONFIG_DIR",
+        td.path().join("cfg").to_string_lossy().to_string(),
+    );
     env::remove_var("KEVI_VAULT_PATH");
 
     // Write a config with a vault_path
@@ -46,7 +49,10 @@ fn vault_path_precedence_cli_over_env_and_file() {
 fn vault_path_precedence_env_over_file() {
     let td = tempdir().unwrap();
     env::set_var("HOME", td.path());
-    env::set_var("KEVI_CONFIG_DIR", td.path().join("cfg").to_string_lossy().to_string());
+    env::set_var(
+        "KEVI_CONFIG_DIR",
+        td.path().join("cfg").to_string_lossy().to_string(),
+    );
     // file config
     write_config_file(td.path(), "vault_path = \"/tmp/cfg_vault.ron\"\n");
     // env overrides
@@ -60,7 +66,10 @@ fn vault_path_precedence_env_over_file() {
 fn vault_path_precedence_file_over_default() {
     let td = tempdir().unwrap();
     env::set_var("HOME", td.path());
-    env::set_var("KEVI_CONFIG_DIR", td.path().join("cfg").to_string_lossy().to_string());
+    env::set_var(
+        "KEVI_CONFIG_DIR",
+        td.path().join("cfg").to_string_lossy().to_string(),
+    );
     env::remove_var("KEVI_VAULT_PATH");
     write_config_file(td.path(), "vault_path = \"/tmp/cfg_vault.ron\"\n");
     let cfg = Config::create(None);
@@ -72,7 +81,10 @@ fn vault_path_precedence_file_over_default() {
 fn clipboard_ttl_and_backups_precedence() {
     let td = tempdir().unwrap();
     env::set_var("HOME", td.path());
-    env::set_var("KEVI_CONFIG_DIR", td.path().join("cfg").to_string_lossy().to_string());
+    env::set_var(
+        "KEVI_CONFIG_DIR",
+        td.path().join("cfg").to_string_lossy().to_string(),
+    );
     env::remove_var("KEVI_CLIP_TTL");
     env::remove_var("KEVI_BACKUPS");
 
@@ -95,12 +107,19 @@ fn clipboard_ttl_and_backups_precedence() {
 fn default_vault_path_uses_platform_data_dir_under_home() {
     let td = tempdir().unwrap();
     env::set_var("HOME", td.path());
-    env::set_var("KEVI_CONFIG_DIR", td.path().join("cfg").to_string_lossy().to_string());
+    env::set_var(
+        "KEVI_CONFIG_DIR",
+        td.path().join("cfg").to_string_lossy().to_string(),
+    );
     env::remove_var("KEVI_VAULT_PATH");
     env::remove_var("KEVI_DATA_DIR");
 
     // Ensure no config file
-    let _ = fs::remove_file(PathBuf::from(env::var("KEVI_CONFIG_DIR").unwrap()).join("kevi").join("config.toml"));
+    let _ = fs::remove_file(
+        PathBuf::from(env::var("KEVI_CONFIG_DIR").unwrap())
+            .join("kevi")
+            .join("config.toml"),
+    );
 
     // Force data_dir to be deterministic via override
     let data_root = td.path().join("data");

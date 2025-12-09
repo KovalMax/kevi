@@ -8,7 +8,9 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use tempfile::tempdir;
 
-fn bp(path: &PathBuf, n: usize) -> PathBuf { PathBuf::from(format!("{}.{n}", path.display())) }
+fn bp(path: &PathBuf, n: usize) -> PathBuf {
+    PathBuf::from(format!("{}.{n}", path.display()))
+}
 
 #[test]
 fn rotating_backups_keep_two_versions_and_prune() {
@@ -50,7 +52,8 @@ fn rotating_backups_keep_two_versions_and_prune() {
     let main_bytes = fs::read(&path).unwrap();
     assert!(main_bytes.starts_with(b"KEVI"), "main must be encrypted");
     let main_plain = decrypt_vault(&main_bytes, pw).expect("decrypt main");
-    let main_entries: Vec<VaultEntry> = ron::from_str(&String::from_utf8(main_plain).unwrap()).unwrap();
+    let main_entries: Vec<VaultEntry> =
+        ron::from_str(&String::from_utf8(main_plain).unwrap()).unwrap();
     assert_eq!(main_entries[0].label, "three");
 
     // .1 should be previous (e2), .2 should be first (e1)

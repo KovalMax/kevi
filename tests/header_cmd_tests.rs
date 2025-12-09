@@ -44,9 +44,10 @@ fn header_bad_magic_fails() {
     let path = dir.path().join("not_a_vault");
     fs::write(&path, b"PLAINTEXT").unwrap();
 
-    run_header(&path)
-        .failure()
-        .stderr(predicate::str::contains("Failed to parse header").or(predicate::str::contains("invalid header")));
+    run_header(&path).failure().stderr(
+        predicate::str::contains("Failed to parse header")
+            .or(predicate::str::contains("invalid header")),
+    );
 }
 
 #[test]
@@ -55,9 +56,10 @@ fn header_truncated_fails() {
     let path = dir.path().join("truncated");
     fs::write(&path, b"KEVI").unwrap();
 
-    run_header(&path)
-        .failure()
-        .stderr(predicate::str::contains("Failed to parse header").or(predicate::str::contains("too short")));
+    run_header(&path).failure().stderr(
+        predicate::str::contains("Failed to parse header")
+            .or(predicate::str::contains("too short")),
+    );
 }
 
 fn write_header_with_ids(path: &PathBuf, kdf_id: u8, aead_id: u8) {

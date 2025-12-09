@@ -20,7 +20,10 @@ async fn test_init_creates_encrypted_vault() {
     vault.handle_init(Some(&path_str)).await.unwrap();
 
     let bytes = fs::read(&path).unwrap();
-    assert!(bytes.starts_with(b"KEVI"), "vault file must start with KEVI header");
+    assert!(
+        bytes.starts_with(b"KEVI"),
+        "vault file must start with KEVI header"
+    );
 
     #[cfg(target_family = "unix")]
     {

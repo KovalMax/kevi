@@ -26,7 +26,13 @@ fn debug_redacts_secrets() {
     let secret = SecretString::new("super-secret".into());
     let dbg = format!("{:?}", secret);
     // Should not contain the actual secret, and typically contains REDACTED marker
-    assert!(!dbg.contains("super-secret"), "Debug must not reveal secret");
+    assert!(
+        !dbg.contains("super-secret"),
+        "Debug must not reveal secret"
+    );
     // Many implementations include REDACTED; allow this to be flexible
-    assert!(dbg.contains("REDACTED") || dbg.contains("Secret("), "Debug should be redacted");
+    assert!(
+        dbg.contains("REDACTED") || dbg.contains("Secret("),
+        "Debug should be redacted"
+    );
 }

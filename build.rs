@@ -7,7 +7,13 @@ fn main() {
         .args(["rev-parse", "--short=12", "HEAD"])
         .output()
         .ok()
-        .and_then(|o| if o.status.success() { Some(String::from_utf8_lossy(&o.stdout).trim().to_string()) } else { None })
+        .and_then(|o| {
+            if o.status.success() {
+                Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+            } else {
+                None
+            }
+        })
         .unwrap_or_else(|| "unknown".to_string());
     println!("cargo:rustc-env=KEVI_GIT_SHA={}", git_sha);
 
@@ -23,7 +29,13 @@ fn main() {
 
     // Feature flags summary
     let mut feats: Vec<&'static str> = Vec::new();
-    if env::var("CARGO_FEATURE_MEMLOCK").is_ok() { feats.push("memlock"); }
-    let features = if feats.is_empty() { "default".to_string() } else { feats.join(",") };
+    if env::var("CARGO_FEATURE_MEMLOCK").is_ok() {
+        feats.push("memlock");
+    }
+    let features = if feats.is_empty() {
+        "default".to_string()
+    } else {
+        feats.join(",")
+    };
     println!("cargo:rustc-env=KEVI_FEATURES={}", features);
 }

@@ -1,7 +1,11 @@
 use kevi::core::crypto::header_fingerprint_excluding_nonce;
 use kevi::core::crypto::KeviHeader;
-use kevi::core::crypto::{default_params, derive_key_argon2id, AEAD_AES256GCM, HEADER_VERSION, KDF_ARGON2ID, NONCE_LEN};
-use kevi::core::dk_session::{clear_dk_session, dk_session_file_for, read_dk_session, write_dk_session};
+use kevi::core::crypto::{
+    default_params, derive_key_argon2id, AEAD_AES256GCM, HEADER_VERSION, KDF_ARGON2ID, NONCE_LEN,
+};
+use kevi::core::dk_session::{
+    clear_dk_session, dk_session_file_for, read_dk_session, write_dk_session,
+};
 use secrecy::{ExposeSecret, SecretBox};
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
@@ -17,7 +21,16 @@ fn dk_session_write_read_and_expire() {
     // Build a synthetic header to compute fingerprint
     let (m, t, p) = default_params();
     let salt = [0u8; 16];
-    let hdr = KeviHeader { version: HEADER_VERSION, kdf_id: KDF_ARGON2ID, aead_id: AEAD_AES256GCM, m_cost_kib: m, t_cost: t, p_lanes: p, salt, nonce: [0u8; NONCE_LEN] };
+    let hdr = KeviHeader {
+        version: HEADER_VERSION,
+        kdf_id: KDF_ARGON2ID,
+        aead_id: AEAD_AES256GCM,
+        m_cost_kib: m,
+        t_cost: t,
+        p_lanes: p,
+        salt,
+        nonce: [0u8; NONCE_LEN],
+    };
     let fp = header_fingerprint_excluding_nonce(&hdr);
 
     // Derive a dummy key and write a session with 1s TTL
@@ -26,7 +39,9 @@ fn dk_session_write_read_and_expire() {
     write_dk_session(&sess_path, &fp, &key_box, Duration::from_secs(1)).expect("write dk session");
 
     // Should read back immediately
-    let got = read_dk_session(&sess_path).expect("read ok").expect("present");
+    let got = read_dk_session(&sess_path)
+        .expect("read ok")
+        .expect("present");
     assert_eq!(got.header_fingerprint_hex, fp);
     assert_eq!(got.key.expose_secret().len(), 32);
 

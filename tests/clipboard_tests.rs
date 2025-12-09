@@ -9,7 +9,9 @@ struct MockClipboard {
 
 impl MockClipboard {
     fn new(initial: &str) -> Self {
-        Self { buf: Mutex::new(initial.to_string()) }
+        Self {
+            buf: Mutex::new(initial.to_string()),
+        }
     }
 }
 

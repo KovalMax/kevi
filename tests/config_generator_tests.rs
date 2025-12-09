@@ -28,7 +28,10 @@ fn generator_uses_config_length_when_not_overridden() {
     let path = td.path().join("vault.ron");
     // Isolate HOME and config dir
     env::set_var("HOME", td.path());
-    env::set_var("KEVI_CONFIG_DIR", td.path().join("cfg").to_string_lossy().to_string());
+    env::set_var(
+        "KEVI_CONFIG_DIR",
+        td.path().join("cfg").to_string_lossy().to_string(),
+    );
     // Configure generator_length via env (highest precedence)
     env::set_var("KEVI_GEN_LENGTH", "33");
 
@@ -36,19 +39,29 @@ fn generator_uses_config_length_when_not_overridden() {
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("KEVI_PASSWORD", pw)
         .env("HOME", td.path())
-        .env("KEVI_CONFIG_DIR", td.path().join("cfg").to_string_lossy().to_string())
+        .env(
+            "KEVI_CONFIG_DIR",
+            td.path().join("cfg").to_string_lossy().to_string(),
+        )
         .env("KEVI_GEN_LENGTH", "33")
         .arg("add")
-        .arg("--path").arg(path.to_string_lossy().to_string())
+        .arg("--path")
+        .arg(path.to_string_lossy().to_string())
         .arg("--generate")
         // no --length here, should fall back to config value 33
-        .arg("--label").arg("cfg_len")
-        .arg("--user").arg("u1")
-        .arg("--notes").arg("");
+        .arg("--label")
+        .arg("cfg_len")
+        .arg("--user")
+        .arg("u1")
+        .arg("--notes")
+        .arg("");
     cmd.assert().success();
 
     let entries: Vec<VaultEntry> = load_vault_file(&path, pw).expect("load");
-    let e = entries.iter().find(|e| e.label == "cfg_len").expect("present");
+    let e = entries
+        .iter()
+        .find(|e| e.label == "cfg_len")
+        .expect("present");
     assert_eq!(e.password.expose_secret().len(), 33);
 }
 
@@ -58,7 +71,10 @@ fn passphrase_uses_config_words_and_sep_when_not_overridden() {
     let path = td.path().join("vault.ron");
     // Isolate
     env::set_var("HOME", td.path());
-    env::set_var("KEVI_CONFIG_DIR", td.path().join("cfg").to_string_lossy().to_string());
+    env::set_var(
+        "KEVI_CONFIG_DIR",
+        td.path().join("cfg").to_string_lossy().to_string(),
+    );
     // Configure passphrase defaults
     write_config(td.path(), "generator_words = 6\ngenerator_sep = \":\"\n");
 
@@ -66,19 +82,29 @@ fn passphrase_uses_config_words_and_sep_when_not_overridden() {
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("KEVI_PASSWORD", pw)
         .env("HOME", td.path())
-        .env("KEVI_CONFIG_DIR", td.path().join("cfg").to_string_lossy().to_string())
+        .env(
+            "KEVI_CONFIG_DIR",
+            td.path().join("cfg").to_string_lossy().to_string(),
+        )
         .arg("add")
-        .arg("--path").arg(path.to_string_lossy().to_string())
+        .arg("--path")
+        .arg(path.to_string_lossy().to_string())
         .arg("--generate")
         .arg("--passphrase")
         // no --words or --sep provided
-        .arg("--label").arg("cfg_phrase")
-        .arg("--user").arg("u2")
-        .arg("--notes").arg("");
+        .arg("--label")
+        .arg("cfg_phrase")
+        .arg("--user")
+        .arg("u2")
+        .arg("--notes")
+        .arg("");
     cmd.assert().success();
 
     let entries: Vec<VaultEntry> = load_vault_file(&path, pw).expect("load");
-    let e = entries.iter().find(|e| e.label == "cfg_phrase").expect("present");
+    let e = entries
+        .iter()
+        .find(|e| e.label == "cfg_phrase")
+        .expect("present");
     let secret = e.password.expose_secret().to_string();
     // Count contiguous lowercase word chunks regardless of separator
     let mut count = 0;

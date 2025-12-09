@@ -26,8 +26,10 @@ fn get_warns_in_ssh_like_environment() {
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("KEVI_PASSWORD", pw)
         .env("SSH_CONNECTION", "1")
-        .arg("get").arg("srv")
-        .arg("--path").arg(path.to_string_lossy().to_string());
+        .arg("get")
+        .arg("srv")
+        .arg("--path")
+        .arg(path.to_string_lossy().to_string());
 
     // We expect success and a warning on stderr about SSH/clipboard; stdout should be empty by default
     cmd.assert()

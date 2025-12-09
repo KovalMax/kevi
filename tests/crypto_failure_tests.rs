@@ -16,7 +16,9 @@ fn test_tamper_detection() -> Result<()> {
     let mut ct = encrypt_vault(b"payload", pw)?;
     // Flip a bit in ciphertext tail (after header)
     let len = ct.len();
-    if len > 5 { ct[len - 5] ^= 0x01; }
+    if len > 5 {
+        ct[len - 5] ^= 0x01;
+    }
     let res = decrypt_vault(&ct, pw);
     assert!(res.is_err(), "tampered ciphertext must not decrypt");
     Ok(())

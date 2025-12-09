@@ -35,8 +35,18 @@ async fn vault_handle_list_async_ok() {
 
     // Seed with two entries
     let entries: Vec<VaultEntry> = vec![
-        VaultEntry { label: "alpha".into(), username: None, password: SecretString::new("a".into()), notes: None },
-        VaultEntry { label: "beta".into(), username: Some(SecretString::new("b".into())), password: SecretString::new("b".into()), notes: None },
+        VaultEntry {
+            label: "alpha".into(),
+            username: None,
+            password: SecretString::new("a".into()),
+            notes: None,
+        },
+        VaultEntry {
+            label: "beta".into(),
+            username: Some(SecretString::new("b".into())),
+            password: SecretString::new("b".into()),
+            notes: None,
+        },
     ];
     save_vault_file(&entries, &path, pw).expect("seed vault");
 

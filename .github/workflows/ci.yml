@@ -64,6 +64,9 @@ jobs:
   audit:
     name: Security audit
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -96,11 +99,11 @@ jobs:
 
       - name: Generate coverage (lcov)
         run: |
-          cargo llvm-cov --workspace --lcov --output-path lcov.info
+          cargo llvm-cov --workspace --no-cfg-coverage --lcov --output-path lcov.info
 
       - name: Generate coverage (HTML)
         run: |
-          cargo llvm-cov --workspace --html --output-dir coverage-html
+          cargo llvm-cov --workspace --no-cfg-coverage --html --output-dir coverage-html
 
       - name: Upload lcov artifact
         uses: actions/upload-artifact@v4

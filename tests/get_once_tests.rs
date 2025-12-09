@@ -25,21 +25,29 @@ fn get_once_bypasses_session_cache_and_does_not_create_it() {
 
     // Ensure no derived-key session exists
     let dk_path = dk_session_file_for(&path);
-    if dk_path.exists() { std::fs::remove_file(&dk_path).unwrap(); }
+    if dk_path.exists() {
+        std::fs::remove_file(&dk_path).unwrap();
+    }
 
     // Run `get --once --no-copy --echo` to print the password without creating a session
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("KEVI_PASSWORD", pw)
-        .arg("get").arg("k")
-        .arg("--path").arg(path.to_string_lossy().to_string())
+        .arg("get")
+        .arg("k")
+        .arg("--path")
+        .arg(path.to_string_lossy().to_string())
         .arg("--no-copy")
         .arg("--echo")
-        .arg("--field").arg("password")
+        .arg("--field")
+        .arg("password")
         .arg("--once");
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("s3cr3t"));
 
     // Session file should still not exist (no caching when --once)
-    assert!(!dk_path.exists(), "dk-session should not be created by --once");
+    assert!(
+        !dk_path.exists(),
+        "dk-session should not be created by --once"
+    );
 }

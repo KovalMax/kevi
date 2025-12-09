@@ -57,11 +57,17 @@ async fn vault_handle_unlock_and_lock_manage_session() {
     env::set_var("KEVI_PASSWORD", "pw");
     vault.handle_unlock(Some(30)).await.expect("unlock ok");
     let dk_path = dk_session_file_for(&path);
-    assert!(dk_path.exists(), "dk session file should exist after unlock");
+    assert!(
+        dk_path.exists(),
+        "dk session file should exist after unlock"
+    );
     assert!(read_dk_session(&dk_path).unwrap().is_some());
 
     // Clear env then lock; a session file should be removed
     env::remove_var("KEVI_PASSWORD");
     vault.handle_lock().await.expect("lock ok");
-    assert!(!dk_path.exists(), "dk session file should be removed after lock");
+    assert!(
+        !dk_path.exists(),
+        "dk session file should be removed after lock"
+    );
 }

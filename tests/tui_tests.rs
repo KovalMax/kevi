@@ -22,9 +22,11 @@ fn tui_renders_labels_and_never_secrets() {
 
     let backend = TestBackend::new(60, 10);
     let mut terminal = Terminal::new(backend).unwrap();
-    terminal.draw(|f| {
-        render_list(f, &app);
-    }).unwrap();
+    terminal
+        .draw(|f| {
+            render_list(f, &app);
+        })
+        .unwrap();
 
     // Inspect buffer for content
     let buf = terminal.backend().buffer().clone();

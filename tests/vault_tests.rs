@@ -27,7 +27,9 @@ async fn test_handle_get_existing_entry() {
     let config = Config::create(Some(path.clone()));
     let vault = Vault::create(&config);
     env::set_var("KEVI_PASSWORD", pw);
-    let result = vault.handle_get("gettest", GetField::Password, true, None, false, false).await;
+    let result = vault
+        .handle_get("gettest", GetField::Password, true, None, false, false)
+        .await;
     assert!(result.is_ok());
 }
 

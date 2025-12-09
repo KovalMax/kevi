@@ -22,7 +22,10 @@ fn test_add_and_get_entry() {
     let loaded = load_vault_file(&_path, pw).unwrap();
     assert_eq!(loaded.len(), 1);
     assert_eq!(loaded[0].label, "testsite");
-    assert_eq!(loaded[0].username.as_ref().unwrap().expose_secret(), "tester");
+    assert_eq!(
+        loaded[0].username.as_ref().unwrap().expose_secret(),
+        "tester"
+    );
     assert_eq!(loaded[0].password.expose_secret(), "1234");
 }
 

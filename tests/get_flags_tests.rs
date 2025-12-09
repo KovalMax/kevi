@@ -14,7 +14,9 @@ fn default_vault_path_for(home: &std::path::Path) -> std::path::PathBuf {
 
 fn seed_vault(home: &std::path::Path) {
     let path = default_vault_path_for(home);
-    if let Some(parent) = path.parent() { let _ = fs::create_dir_all(parent); }
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
     let pw = "pw";
     let entry = VaultEntry {
         label: "label1".into(),
@@ -34,8 +36,10 @@ fn get_echo_password_and_no_copy_prints_secret() {
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("HOME", home)
         .env("KEVI_PASSWORD", "pw")
-        .arg("get").arg("label1")
-        .arg("--path").arg(default_vault_path_for(home).to_string_lossy().to_string())
+        .arg("get")
+        .arg("label1")
+        .arg("--path")
+        .arg(default_vault_path_for(home).to_string_lossy().to_string())
         .arg("--no-copy")
         .arg("--echo");
     cmd.assert()
@@ -52,9 +56,12 @@ fn get_echo_user_and_no_copy_prints_username() {
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("HOME", home)
         .env("KEVI_PASSWORD", "pw")
-        .arg("get").arg("label1")
-        .arg("--path").arg(default_vault_path_for(home).to_string_lossy().to_string())
-        .arg("--field").arg("user")
+        .arg("get")
+        .arg("label1")
+        .arg("--path")
+        .arg(default_vault_path_for(home).to_string_lossy().to_string())
+        .arg("--field")
+        .arg("user")
         .arg("--no-copy")
         .arg("--echo");
     cmd.assert()
@@ -71,9 +78,12 @@ fn get_echo_notes_and_no_copy_prints_notes() {
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("HOME", home)
         .env("KEVI_PASSWORD", "pw")
-        .arg("get").arg("label1")
-        .arg("--path").arg(default_vault_path_for(home).to_string_lossy().to_string())
-        .arg("--field").arg("notes")
+        .arg("get")
+        .arg("label1")
+        .arg("--path")
+        .arg(default_vault_path_for(home).to_string_lossy().to_string())
+        .arg("--field")
+        .arg("notes")
         .arg("--no-copy")
         .arg("--echo");
     cmd.assert()
@@ -90,10 +100,10 @@ fn get_no_copy_without_echo_prints_nothing() {
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("HOME", home)
         .env("KEVI_PASSWORD", "pw")
-        .arg("get").arg("label1")
-        .arg("--path").arg(default_vault_path_for(home).to_string_lossy().to_string())
+        .arg("get")
+        .arg("label1")
+        .arg("--path")
+        .arg(default_vault_path_for(home).to_string_lossy().to_string())
         .arg("--no-copy");
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::is_empty());
+    cmd.assert().success().stdout(predicate::str::is_empty());
 }
