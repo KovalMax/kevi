@@ -21,7 +21,7 @@ async fn vault_handle_header_async_ok() {
     save_vault_file(&entries, &path, pw).expect("seed vault");
 
     // Run async header handler
-    let cfg = Config::create(Some(path.clone()));
+    let cfg = Config::create(Some(path.clone()), None).unwrap();
     let v = Vault::create(&cfg);
     let res = v.handle_header().await;
     assert!(res.is_ok());
@@ -53,7 +53,7 @@ async fn vault_handle_list_async_ok() {
     // Provide password via env to avoid prompt
     std::env::set_var("KEVI_PASSWORD", pw);
 
-    let cfg = Config::create(Some(path.clone()));
+    let cfg = Config::create(Some(path.clone()), None).unwrap();
     let v = Vault::create(&cfg);
     // Run list without query/json to exercise async path
     let res = v.handle_list(None, false, false).await;

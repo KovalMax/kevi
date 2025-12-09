@@ -39,6 +39,8 @@ pub struct App {
     pub form_user: String,
     pub form_notes: String,
     pub form_original_label: String,
+    // Toggle for revealing password in Details view
+    pub reveal_password: bool,
 }
 
 impl App {
@@ -57,6 +59,7 @@ impl App {
             form_user: String::new(),
             form_notes: String::new(),
             form_original_label: String::new(),
+            reveal_password: false,
         };
         app.recompute();
         app
@@ -166,9 +169,11 @@ impl App {
     // View navigation
     pub fn enter_details(&mut self) {
         self.view = View::Details;
+        self.reveal_password = false;
     }
     pub fn back_to_list(&mut self) {
         self.view = View::List;
+        self.reveal_password = false;
     }
 
     pub fn enter_add(&mut self) {

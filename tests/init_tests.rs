@@ -15,7 +15,7 @@ async fn test_init_creates_encrypted_vault() {
     // Ensure password available non-interactively
     env::set_var("KEVI_PASSWORD", "initpw");
 
-    let config = Config::create(None);
+    let config = Config::create(None, None).unwrap();
     let vault = Vault::create(&config);
     vault.handle_init(Some(&path_str)).await.unwrap();
 

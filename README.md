@@ -370,6 +370,13 @@ include_digits = true
 include_upper = true
 include_lower = true
 include_symbols = true
+
+[profiles]
+  [profiles.work]
+  vault_path = "/home/alice/work/kevi-work.ron"
+
+  [profiles.personal]
+  vault_path = "/home/alice/.local/share/kevi/vault.ron"
 ```
 
 Typical fields include:
@@ -380,6 +387,36 @@ Typical fields include:
 * `backups` – how many historical versions of the vault file to keep
   when writing.
 * `[generator]` – defaults for password generation.
+* `[profiles]` – named vault configurations.
+
+### Profiles
+
+You can define named profiles in your `config.toml` (or via CLI) to avoid passing `--path` for different vaults.
+
+Manage profiles via the CLI:
+
+```bash
+# Add or update a profile
+kevi profile add work --path /home/alice/work/kevi-work.ron --on-duplicate-override
+
+# List and inspect profiles
+kevi profile list
+kevi profile show work
+
+# Set or clear default profile
+kevi profile default work
+kevi profile default --clear
+```
+
+Use a profile with any command:
+
+```bash
+kevi --profile work list
+kevi --profile work get github --field password --echo --no-copy
+kevi --profile work tui
+```
+
+Profiles only change **which vault file** is used; they do not change the cryptography or security model.
 
 Environment variables can override some of these:
 

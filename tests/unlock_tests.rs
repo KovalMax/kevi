@@ -50,7 +50,7 @@ async fn vault_handle_unlock_and_lock_manage_session() {
         std::env::set_var("KEVI_PASSWORD", "pw");
         save_vault_file(&entries, &path, "pw").expect("init empty vault");
     }
-    let config = Config::create(Some(path.clone()));
+    let config = Config::create(Some(path.clone()), None).unwrap();
     let vault = Vault::create(&config);
 
     // Provide password via env to avoid prompt

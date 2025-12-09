@@ -164,6 +164,9 @@ pub async fn launch(config: &Config) -> Result<()> {
                                     app.toast("No username".to_string());
                                 }
                             }
+                            KeyCode::Char('v') => {
+                                app.reveal_password = !app.reveal_password;
+                            }
                             KeyCode::Char('e') => app.enter_edit(),
                             KeyCode::Char('a') => app.enter_add(),
                             KeyCode::Char('d') => app.enter_confirm_delete(),

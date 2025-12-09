@@ -181,6 +181,36 @@ impl<'a> Vault<'a> {
         Ok(())
     }
 
+    pub async fn handle_show(&self, key: &str, reveal_password: bool) -> Result<()> {
+        let svc = self.service.clone();
+        let entries = spawn_blocking(move || svc.load())
+            .await
+            .map_err(|_| anyhow!("task join error"))??;
+
+        if let Some(entry) = entries.iter().find(|e| e.label == key) {
+            println!("Label:    {}", entry.label);
+            if let Some(user) = &entry.username {
+                println!("Username: {}", user.expose_secret());
+            } else {
+                println!("Username: (none)");
+            }
+            if let Some(notes) = &entry.notes {
+                println!("Notes:    {}", notes);
+            } else {
+                println!("Notes:    (none)");
+            }
+
+            if reveal_password {
+                println!("Password: {}", entry.password.expose_secret());
+            } else {
+                println!("Password: ******** (use --reveal-password to show)");
+            }
+        } else {
+            anyhow::bail!("entry '{}' not found", key);
+        }
+        Ok(())
+    }
+
     pub async fn handle_add(&self, opts: AddOptions) -> Result<()> {
         // Load existing entries first
         let svc_load = self.service.clone();

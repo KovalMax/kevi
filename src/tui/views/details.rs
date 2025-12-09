@@ -20,42 +20,35 @@ pub fn render_details(f: &mut Frame, app: &App) {
     f.render_widget(title, chunks[0]);
 
     let label = app.selected_label().unwrap_or_else(|| "(none)".to_string());
-    // Never render secrets: show placeholders
-    let user_mask = if app
+
+    let user = app
         .selected_field(crate::core::vault::GetField::User)
-        .is_some()
-    {
-        "hidden"
-    } else {
-        "(none)"
-    };
-    let pass_mask = if app
+        .unwrap_or_else(|| "(none)".to_string());
+
+    let pass_raw = app
         .selected_field(crate::core::vault::GetField::Password)
-        .is_some()
-    {
-        "hidden"
+        .unwrap_or_default();
+    let pass_display = if app.reveal_password {
+        pass_raw
     } else {
-        "(none)"
-    };
-    let notes_mask = if app
-        .selected_field(crate::core::vault::GetField::Notes)
-        .is_some()
-    {
-        "hidden"
-    } else {
-        "(none)"
+        "********".to_string()
     };
 
-    let body = format!(
-        "Label: {label}\nUsername: {user_mask}\nPassword: {pass_mask}\nNotes: {notes_mask}"
-    );
+    let notes = app
+        .selected_field(crate::core::vault::GetField::Notes)
+        .unwrap_or_else(|| "(none)".to_string());
+
+    let body =
+        format!("Label: {label}\nUsername: {user}\nPassword: {pass_display}\nNotes: {notes}");
     let para = Paragraph::new(body)
         .block(Block::default().borders(Borders::ALL).title("Entry"))
         .style(theme.normal_style());
     f.render_widget(para, chunks[1]);
 
     let footer = match app.view {
-        View::Details => "q=back  Enter=copy password  u=copy user  e=edit  d=delete",
+        View::Details => {
+            "q=back  Enter=copy password  u=copy user  v=toggle password  e=edit  d=delete"
+        }
         _ => "",
     };
     f.render_widget(Paragraph::new(footer).style(theme.toast_style()), chunks[2]);

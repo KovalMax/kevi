@@ -42,14 +42,20 @@ fn details_view_masks_secrets() {
 
     let all = buffer_to_string(&terminal);
     assert!(all.contains("alpha"));
-    // Must not render actual secrets
-    assert!(!all.contains("alice"));
+
+    // User and Notes are visible now
+    assert!(all.contains("alice"));
+    assert!(all.contains("noteZ"));
+
+    // Password should be masked by default
     assert!(!all.contains("secret123"));
-    assert!(!all.contains("noteZ"));
-    // Should show placeholders
-    assert!(all.contains("Username: hidden"));
-    assert!(all.contains("Password: hidden"));
-    assert!(all.contains("Notes: hidden"));
+    assert!(all.contains("********"));
+
+    // Test reveal
+    app.reveal_password = true;
+    terminal.draw(|f| render_details(f, &app)).unwrap();
+    let all_revealed = buffer_to_string(&terminal);
+    assert!(all_revealed.contains("secret123"));
 }
 
 #[test]

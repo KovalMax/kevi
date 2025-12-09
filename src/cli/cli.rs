@@ -25,12 +25,20 @@ const KEVI_LONG_VERSION: &str = concat!(
     about = " 🦾 Kevi — Secure CLI Vault"
 )]
 pub struct Cli {
+    /// Named profile from config.toml to resolve the vault path
+    #[arg(long)]
+    pub profile: Option<String>,
+
     #[command(subcommand)]
     pub command: Commands,
 }
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Manage named vault profiles
+    #[command(subcommand)]
+    Profile(ProfileCommand),
+
     /// Get secret by key and copy to clipboard
     Get {
         /// Entry label (key)
@@ -63,6 +71,17 @@ pub enum Commands {
     /// Initialize a new vault
     Init {
         /// Vault file path
+        path: Option<String>,
+    },
+    /// Show entry details (optionally revealing password)
+    Show {
+        /// Entry label
+        key: String,
+        /// Reveal the password in plain text
+        #[arg(long)]
+        reveal_password: bool,
+        /// Vault file path override
+        #[arg(long)]
         path: Option<String>,
     },
 
@@ -156,6 +175,37 @@ pub enum Commands {
         /// Vault file path override
         #[arg(long)]
         path: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum ProfileCommand {
+    /// List all profiles
+    List,
+
+    /// Show details of a profile
+    Show { name: String },
+
+    /// Add or update a profile
+    Add {
+        name: String,
+        #[arg(long, value_name = "FILE")]
+        path: String,
+        /// Overwrite an existing profile if it already exists
+        #[arg(long = "on-duplicate-override")]
+        on_duplicate_override: bool,
+    },
+
+    /// Remove a profile
+    Rm { name: String },
+
+    /// View or modify the default profile
+    Default {
+        /// Name of the profile to set as default; omit to just show the current default
+        name: Option<String>,
+        /// Clear any existing default profile
+        #[arg(long = "clear")]
+        clear: bool,
     },
 }
 

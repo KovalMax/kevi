@@ -40,7 +40,7 @@ fn vault_path_precedence_cli_over_env_and_file() {
     // Also set env var; CLI should still win
     env::set_var("KEVI_VAULT_PATH", "/tmp/env_vault.ron");
     let cli_path = PathBuf::from("/tmp/cli_vault.ron");
-    let cfg = Config::create(Some(cli_path.clone()));
+    let cfg = Config::create(Some(cli_path.clone()), None).unwrap();
     assert_eq!(cfg.vault_path, cli_path);
 }
 
@@ -57,7 +57,7 @@ fn vault_path_precedence_env_over_file() {
     write_config_file(td.path(), "vault_path = \"/tmp/cfg_vault.ron\"\n");
     // env overrides
     env::set_var("KEVI_VAULT_PATH", "/tmp/env_vault.ron");
-    let cfg = Config::create(None);
+    let cfg = Config::create(None, None).unwrap();
     assert_eq!(cfg.vault_path, PathBuf::from("/tmp/env_vault.ron"));
 }
 
@@ -72,7 +72,7 @@ fn vault_path_precedence_file_over_default() {
     );
     env::remove_var("KEVI_VAULT_PATH");
     write_config_file(td.path(), "vault_path = \"/tmp/cfg_vault.ron\"\n");
-    let cfg = Config::create(None);
+    let cfg = Config::create(None, None).unwrap();
     assert_eq!(cfg.vault_path, PathBuf::from("/tmp/cfg_vault.ron"));
 }
 
@@ -90,14 +90,14 @@ fn clipboard_ttl_and_backups_precedence() {
 
     // From file when env not set
     write_config_file(td.path(), "clipboard_ttl = 33\nbackups = 4\n");
-    let cfg = Config::create(None);
+    let cfg = Config::create(None, None).unwrap();
     assert_eq!(cfg.clipboard_ttl, Some(33));
     assert_eq!(cfg.backups, Some(4));
 
     // Env overrides file
     env::set_var("KEVI_CLIP_TTL", "99");
     env::set_var("KEVI_BACKUPS", "7");
-    let cfg2 = Config::create(None);
+    let cfg2 = Config::create(None, None).unwrap();
     assert_eq!(cfg2.clipboard_ttl, Some(99));
     assert_eq!(cfg2.backups, Some(7));
 }
@@ -124,7 +124,7 @@ fn default_vault_path_uses_platform_data_dir_under_home() {
     // Force data_dir to be deterministic via override
     let data_root = td.path().join("data");
     env::set_var("KEVI_DATA_DIR", data_root.to_string_lossy().to_string());
-    let cfg = Config::create(None);
+    let cfg = Config::create(None, None).unwrap();
     let expected = data_root.join("kevi").join("vault.ron");
     assert_eq!(cfg.vault_path, expected);
 }
@@ -152,6 +152,8 @@ fn backups_rotation_uses_configured_count() {
         generator_words: None,
         generator_sep: None,
         avoid_ambiguous: None,
+        default_profile: None,
+        profiles: Default::default(),
     };
 
     // Use FileByteStore with explicit backups count (no env coupling)

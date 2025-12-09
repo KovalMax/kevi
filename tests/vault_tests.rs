@@ -24,7 +24,7 @@ async fn test_handle_get_existing_entry() {
     };
 
     save_vault_file(&[entry.clone()], &path, pw).unwrap();
-    let config = Config::create(Some(path.clone()));
+    let config = Config::create(Some(path.clone()), None).unwrap();
     let vault = Vault::create(&config);
     env::set_var("KEVI_PASSWORD", pw);
     let result = vault
@@ -45,7 +45,7 @@ async fn test_handle_rm_existing_entry() {
     };
 
     save_vault_file(&[entry.clone()], &path, pw).unwrap();
-    let config = Config::create(Some(path.clone()));
+    let config = Config::create(Some(path.clone()), None).unwrap();
     let vault = Vault::create(&config);
     env::set_var("KEVI_PASSWORD", pw);
     let result = vault.handle_rm("rmtest", true).await;
