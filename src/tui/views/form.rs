@@ -38,15 +38,20 @@ pub fn render_form(f: &mut Frame, app: &App) {
     };
     f.render_widget(Paragraph::new(title).style(theme.title_style()), chunks[0]);
 
+    let block = Block::default().borders(Borders::ALL).title("Form");
+    let inner_area = block.inner(chunks[1]);
+    f.render_widget(block, chunks[1]);
+
     let inner = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Length(1),
+            Constraint::Length(1),
             Constraint::Min(0),
         ])
-        .split(chunks[1]);
+        .split(inner_area);
 
     let label_para = field_line(
         "Label",
@@ -60,6 +65,12 @@ pub fn render_form(f: &mut Frame, app: &App) {
         matches!(app.form_field, FormField::User),
         &theme,
     );
+    let password_para = field_line(
+        "Password",
+        &app.form_password,
+        matches!(app.form_field, FormField::Password),
+        &theme,
+    );
     let notes_para = field_line(
         "Notes",
         &app.form_notes,
@@ -67,11 +78,10 @@ pub fn render_form(f: &mut Frame, app: &App) {
         &theme,
     );
 
-    let block = Block::default().borders(Borders::ALL).title("Form");
-    f.render_widget(block, chunks[1]);
     f.render_widget(label_para, inner[0]);
     f.render_widget(user_para, inner[1]);
-    f.render_widget(notes_para, inner[2]);
+    f.render_widget(password_para, inner[2]);
+    f.render_widget(notes_para, inner[3]);
 
     let footer = "Esc=cancel  Tab/Shift-Tab=switch  Enter=submit";
     f.render_widget(Paragraph::new(footer).style(theme.toast_style()), chunks[2]);

@@ -1,9 +1,13 @@
 use kevi::config::app_config::Config;
-use kevi::core::adapters::{CachedKeyResolver, FileByteStore, RonCodec};
-use kevi::core::dk_session::{dk_session_file_for, read_dk_session};
-use kevi::core::entry::VaultEntry;
-use kevi::core::service::VaultService;
-use kevi::core::vault::Vault;
+use kevi::filesystem::store::FileByteStore;
+use kevi::session_management::resolver::{
+    dk_session_file_for, CachedKeyResolver, DerivedKeyStored,
+};
+use kevi::session_management::session::load;
+use kevi::vault::codec::RonCodec;
+use kevi::vault::handlers::Vault;
+use kevi::vault::models::VaultEntry;
+use kevi::vault::service::VaultService;
 use secrecy::SecretString;
 use std::env;
 use std::sync::Arc;
@@ -44,8 +48,8 @@ async fn vault_handle_unlock_and_lock_manage_session() {
     let path = dir.path().join("vault.ron");
     // Initialize an encrypted vault file (empty) so header exists
     {
-        use kevi::core::store::save_vault_file;
-        let entries: Vec<kevi::core::entry::VaultEntry> = Vec::new();
+        use kevi::vault::persistence::save_vault_file;
+        let entries: Vec<kevi::vault::models::VaultEntry> = Vec::new();
         // Ensure password available
         std::env::set_var("KEVI_PASSWORD", "pw");
         save_vault_file(&entries, &path, "pw").expect("init empty vault");
@@ -61,7 +65,8 @@ async fn vault_handle_unlock_and_lock_manage_session() {
         dk_path.exists(),
         "dk session file should exist after unlock"
     );
-    assert!(read_dk_session(&dk_path).unwrap().is_some());
+    let session: Option<DerivedKeyStored> = load(&dk_path).unwrap();
+    assert!(session.is_some());
 
     // Clear env then lock; a session file should be removed
     env::remove_var("KEVI_PASSWORD");

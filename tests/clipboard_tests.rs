@@ -1,4 +1,4 @@
-use kevi::core::clipboard::{copy_with_ttl, ClipboardEngine};
+use kevi::filesystem::clipboard::{copy_with_ttl, ClipboardEngine};
 use secrecy::SecretString;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

@@ -3,6 +3,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::tui::app::{App, View};
 use crate::tui::theme::Theme;
+use crate::vault::handlers::GetField;
 
 pub fn render_details(f: &mut Frame, app: &App) {
     let theme = Theme::default();
@@ -22,12 +23,10 @@ pub fn render_details(f: &mut Frame, app: &App) {
     let label = app.selected_label().unwrap_or_else(|| "(none)".to_string());
 
     let user = app
-        .selected_field(crate::core::vault::GetField::User)
+        .selected_field(GetField::User)
         .unwrap_or_else(|| "(none)".to_string());
 
-    let pass_raw = app
-        .selected_field(crate::core::vault::GetField::Password)
-        .unwrap_or_default();
+    let pass_raw = app.selected_field(GetField::Password).unwrap_or_default();
     let pass_display = if app.reveal_password {
         pass_raw
     } else {
@@ -35,7 +34,7 @@ pub fn render_details(f: &mut Frame, app: &App) {
     };
 
     let notes = app
-        .selected_field(crate::core::vault::GetField::Notes)
+        .selected_field(GetField::Notes)
         .unwrap_or_else(|| "(none)".to_string());
 
     let body =

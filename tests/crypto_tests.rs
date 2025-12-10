@@ -1,5 +1,5 @@
 use anyhow::Result;
-use kevi::core::crypto::{decrypt_vault, encrypt_vault};
+use kevi::cryptography::primitives::{decrypt_vault, encrypt_vault};
 
 #[tokio::test]
 async fn test_encryption_decryption() -> Result<()> {

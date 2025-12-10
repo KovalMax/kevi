@@ -1,6 +1,6 @@
 use kevi::config::app_config::Config;
-use kevi::core::adapters::FileByteStore;
-use kevi::core::ports::ByteStore;
+use kevi::filesystem::store::FileByteStore;
+use kevi::vault::ports::ByteStore;
 use serial_test::serial;
 use std::env;
 use std::fs;
@@ -161,7 +161,7 @@ fn backups_rotation_uses_configured_count() {
 
     // Perform multiple writes to trigger rotation
     store.write(b"A").expect("write 1");
-    // After first write: no backups yet
+    // After first write no backups yet
     assert!(!Path::new(&format!("{}{}", path.display(), ".1")).exists());
 
     store.write(b"B").expect("write 2");

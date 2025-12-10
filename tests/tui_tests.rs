@@ -1,9 +1,9 @@
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 
-use kevi::core::entry::VaultEntry;
 use kevi::tui::app::App;
 use kevi::tui::views::list::render_list;
+use kevi::vault::models::VaultEntry;
 use secrecy::SecretString;
 
 fn make(label: &str, pw: &str) -> VaultEntry {

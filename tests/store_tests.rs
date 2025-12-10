@@ -1,5 +1,5 @@
-use kevi::core::entry::VaultEntry;
-use kevi::core::store::{load_vault_file, save_vault_file};
+use kevi::vault::models::VaultEntry;
+use kevi::vault::persistence::{load_vault_file, save_vault_file};
 use secrecy::{ExposeSecret, SecretString};
 use tempfile::tempdir;
 

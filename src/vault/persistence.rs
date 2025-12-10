@@ -1,6 +1,6 @@
-use crate::core::crypto::{decrypt_vault, encrypt_vault};
-use crate::core::entry::VaultEntry;
-use crate::core::fs_secure::write_with_backups;
+use crate::cryptography::primitives::{decrypt_vault, encrypt_vault};
+use crate::filesystem::secure::write_with_backups;
+use crate::vault::models::VaultEntry;
 use anyhow::{anyhow, Context, Result};
 use ron::ser::PrettyConfig;
 use std::fs::File;

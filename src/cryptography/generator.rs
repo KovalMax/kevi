@@ -2,8 +2,8 @@ use anyhow::{anyhow, Result};
 use ring::rand::{SecureRandom, SystemRandom};
 use std::sync::Arc;
 
-use crate::core::ports::{GenPolicy, PasswordGenerator, Rng};
-use crate::core::wordlist::WORDS;
+use crate::cryptography::wordlist::WORDS;
+use crate::vault::ports::{GenPolicy, PasswordGenerator, Rng};
 
 pub struct SystemRng;
 

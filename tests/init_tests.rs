@@ -1,5 +1,5 @@
 use kevi::config::app_config::Config;
-use kevi::core::vault::Vault;
+use kevi::vault::handlers::Vault;
 use std::env;
 use std::fs;
 #[cfg(target_family = "unix")]

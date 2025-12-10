@@ -1,6 +1,8 @@
-use kevi::core::adapters::{CachedKeyResolver, FileByteStore, RonCodec};
-use kevi::core::entry::VaultEntry;
-use kevi::core::service::VaultService;
+use kevi::filesystem::store::FileByteStore;
+use kevi::session_management::resolver::CachedKeyResolver;
+use kevi::vault::codec::RonCodec;
+use kevi::vault::models::VaultEntry;
+use kevi::vault::service::VaultService;
 use secrecy::SecretString;
 use std::env;
 use std::sync::Arc;

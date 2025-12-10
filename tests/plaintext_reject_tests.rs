@@ -1,7 +1,9 @@
-use kevi::core::adapters::{CachedKeyResolver, FileByteStore, RonCodec};
-use kevi::core::entry::VaultEntry;
-use kevi::core::service::VaultService;
-use kevi::core::store::load_vault_file;
+use kevi::filesystem::store::FileByteStore;
+use kevi::session_management::resolver::CachedKeyResolver;
+use kevi::vault::codec::RonCodec;
+use kevi::vault::models::VaultEntry;
+use kevi::vault::persistence::load_vault_file;
+use kevi::vault::service::VaultService;
 use secrecy::SecretString;
 use std::fs;
 use std::sync::Arc;
@@ -22,7 +24,7 @@ fn store_rejects_plaintext_vault_files() {
     let ron = ron::to_string(&entries).unwrap();
     fs::write(&path, ron).unwrap();
 
-    // Attempt to load should error due to missing KEVI header
+    // Attempt to load should error due to a missing KEVI header
     let res = load_vault_file(&path, "irrelevant");
     assert!(res.is_err());
     let err = format!("{}", res.unwrap_err());

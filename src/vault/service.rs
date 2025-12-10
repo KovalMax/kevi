@@ -1,10 +1,10 @@
-use crate::core::crypto::{
+use crate::cryptography::memlock::{lock_slice, unlock_slice};
+use crate::cryptography::primitives::{
     decrypt_vault_with_key, default_params, encrypt_vault_with_key, parse_kevi_header, KEY_LEN,
     SALT_LEN,
 };
-use crate::core::entry::VaultEntry;
-use crate::core::memlock::{lock_slice, unlock_slice};
-use crate::core::ports::{ByteStore, HeaderParams, KeyResolver, VaultCodec};
+use crate::vault::models::VaultEntry;
+use crate::vault::ports::{ByteStore, HeaderParams, KeyResolver, VaultCodec};
 use anyhow::{Context, Result};
 use ring::rand::{SecureRandom, SystemRandom};
 use secrecy::ExposeSecret;

@@ -3,8 +3,8 @@ use secrecy::ExposeSecret;
 use std::process::Command;
 use tempfile::tempdir;
 
-use kevi::core::entry::VaultEntry;
-use kevi::core::store::load_vault_file;
+use kevi::vault::models::VaultEntry;
+use kevi::vault::persistence::load_vault_file;
 
 #[test]
 fn cli_add_generate_char_mode_creates_expected_password() {

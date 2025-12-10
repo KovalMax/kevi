@@ -1,12 +1,13 @@
-use kevi::core::crypto::header_fingerprint_excluding_nonce;
-use kevi::core::crypto::KeviHeader;
-use kevi::core::crypto::{
+use kevi::cryptography::primitives::header_fingerprint_excluding_nonce;
+use kevi::cryptography::primitives::KeviHeader;
+use kevi::cryptography::primitives::{
     default_params, derive_key_argon2id, AEAD_AES256GCM, HEADER_VERSION, KDF_ARGON2ID, NONCE_LEN,
 };
-use kevi::core::dk_session::{
-    clear_dk_session, dk_session_file_for, read_dk_session, write_dk_session,
+use kevi::session_management::resolver::{
+    dk_session_file_for, save_derived_key_session, DerivedKeyStored,
 };
-use secrecy::{ExposeSecret, SecretBox};
+use kevi::session_management::session::{clear, load};
+use secrecy::SecretBox;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
@@ -36,14 +37,13 @@ fn dk_session_write_read_and_expire() {
     // Derive a dummy key and write a session with 1s TTL
     let key = derive_key_argon2id("pw123", &salt, m, t, p).unwrap();
     let key_box = SecretBox::new(Box::new(key.to_vec()));
-    write_dk_session(&sess_path, &fp, &key_box, Duration::from_secs(1)).expect("write dk session");
+    save_derived_key_session(&sess_path, &fp, &key_box, Duration::from_secs(1))
+        .expect("write dk session");
 
     // Should read back immediately
-    let got = read_dk_session(&sess_path)
-        .expect("read ok")
-        .expect("present");
+    let got: DerivedKeyStored = load(&sess_path).expect("read ok").expect("present");
     assert_eq!(got.header_fingerprint_hex, fp);
-    assert_eq!(got.key.expose_secret().len(), 32);
+    assert!(!got.key_b64.is_empty());
 
     // On Unix, file perms should be 0600
     #[cfg(target_family = "unix")]
@@ -55,10 +55,10 @@ fn dk_session_write_read_and_expire() {
 
     // Wait for expiry and ensure it's gone
     std::thread::sleep(Duration::from_millis(1200));
-    let got2 = read_dk_session(&sess_path).expect("read ok after expire");
+    let got2: Option<DerivedKeyStored> = load(&sess_path).expect("read ok after expire");
     assert!(got2.is_none(), "dk session should be expired");
     assert!(!sess_path.exists(), "expired dk session should be removed");
 
     // Clear is idempotent
-    clear_dk_session(&sess_path).unwrap();
+    clear(&sess_path).unwrap();
 }

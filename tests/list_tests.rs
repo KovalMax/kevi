@@ -4,8 +4,8 @@ use secrecy::SecretString;
 use std::process::Command;
 use tempfile::tempdir;
 
-use kevi::core::entry::VaultEntry;
-use kevi::core::store::save_vault_file;
+use kevi::vault::models::VaultEntry;
+use kevi::vault::persistence::save_vault_file;
 
 #[test]
 fn list_shows_labels_by_default_and_user_when_requested() {
@@ -30,7 +30,7 @@ fn list_shows_labels_by_default_and_user_when_requested() {
     ];
     save_vault_file(&entries, &path, pw).expect("seed vault");
 
-    // By default: only labels
+    // By default, only labels
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("KEVI_PASSWORD", pw)
         .arg("list")

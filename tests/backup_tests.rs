@@ -1,6 +1,6 @@
-use kevi::core::crypto::decrypt_vault;
-use kevi::core::entry::VaultEntry;
-use kevi::core::store::save_vault_file;
+use kevi::cryptography::primitives::decrypt_vault;
+use kevi::vault::models::VaultEntry;
+use kevi::vault::persistence::save_vault_file;
 use secrecy::SecretString;
 use std::fs;
 #[cfg(target_family = "unix")]

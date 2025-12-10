@@ -77,9 +77,9 @@ pub fn ttl_seconds(config: &Config, override_ttl: Option<u64>) -> u64 {
 /// Best-effort environment warning when clipboard is likely unavailable (SSH/headless)
 pub fn environment_warning() -> Option<String> {
     let is_ssh = std::env::var("SSH_CONNECTION").is_ok() || std::env::var("SSH_TTY").is_ok();
-    #[cfg(target_family = "unix")]
+    #[cfg(all(target_family = "unix", not(target_os = "macos")))]
     let headless = std::env::var("DISPLAY").is_err() && std::env::var("WAYLAND_DISPLAY").is_err();
-    #[cfg(not(target_family = "unix"))]
+    #[cfg(any(not(target_family = "unix"), target_os = "macos"))]
     let headless = false;
     if is_ssh {
         return Some(

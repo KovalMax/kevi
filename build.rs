@@ -18,8 +18,7 @@ fn main() {
     println!("cargo:rustc-env=KEVI_GIT_SHA={git_sha}");
 
     // Build time (UTC, RFC3339)
-    let build_time = chrono::Utc::now()
-        .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let build_time = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
     println!("cargo:rustc-env=KEVI_BUILD_TIME={build_time}");
 
     // Target triple

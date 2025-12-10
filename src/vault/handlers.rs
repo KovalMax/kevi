@@ -1,21 +1,25 @@
 use crate::config::app_config::Config;
-use crate::core::adapters::{CachedKeyResolver, FileByteStore, RonCodec};
-use crate::core::clipboard::{
-    copy_with_ttl, environment_warning, ttl_seconds, SystemClipboardEngine,
-};
-use crate::core::crypto::{
-    derive_key_argon2id, header_fingerprint_excluding_nonce, parse_kevi_header, AEAD_AES256GCM,
-    KDF_ARGON2ID,
-};
-use crate::core::dk_session::{clear_dk_session, dk_session_file_for, write_dk_session};
-use crate::core::entry::VaultEntry;
-use crate::core::generator::{
+use crate::cryptography::generator::{
     estimate_bits_char_mode, estimate_bits_passphrase, strength_label, DefaultPasswordGenerator,
     SystemRng,
 };
-use crate::core::ports::{ByteStore, GenPolicy, KeyResolver, PasswordGenerator, VaultCodec};
-use crate::core::service::VaultService;
-use crate::core::store::save_vault_file;
+use crate::cryptography::primitives::{
+    derive_key_argon2id, header_fingerprint_excluding_nonce, parse_kevi_header, AEAD_AES256GCM,
+    KDF_ARGON2ID,
+};
+use crate::filesystem::clipboard::{
+    copy_with_ttl, environment_warning, ttl_seconds, SystemClipboardEngine,
+};
+use crate::filesystem::store::FileByteStore;
+use crate::session_management::resolver::{
+    dk_session_file_for, save_derived_key_session, BypassKeyResolver, CachedKeyResolver,
+};
+use crate::session_management::session::clear;
+use crate::vault::codec::RonCodec;
+use crate::vault::models::VaultEntry;
+use crate::vault::persistence::save_vault_file;
+use crate::vault::ports::{ByteStore, GenPolicy, KeyResolver, PasswordGenerator, Rng, VaultCodec};
+use crate::vault::service::VaultService;
 use anyhow::{anyhow, Result};
 use inquire::{Confirm, Password, Text};
 use secrecy::{ExposeSecret, SecretBox, SecretString};
@@ -106,8 +110,7 @@ impl<'a> Vault<'a> {
             let store: Arc<dyn ByteStore> =
                 Arc::new(FileByteStore::new(self.config.vault_path.clone()));
             let codec: Arc<dyn VaultCodec> = Arc::new(RonCodec);
-            let resolver: Arc<dyn KeyResolver> =
-                Arc::new(crate::core::adapters::BypassKeyResolver::new());
+            let resolver: Arc<dyn KeyResolver> = Arc::new(BypassKeyResolver::new());
             let svc = Arc::new(VaultService::new(store, codec, resolver));
             spawn_blocking(move || svc.load())
                 .await
@@ -165,7 +168,7 @@ impl<'a> Vault<'a> {
         match SystemClipboardEngine::new() {
             Ok(engine_impl) => {
                 let engine =
-                    Arc::new(engine_impl) as Arc<dyn crate::core::clipboard::ClipboardEngine>;
+                    Arc::new(engine_impl) as Arc<dyn crate::filesystem::clipboard::ClipboardEngine>;
                 let secret = SecretString::new(value.into());
                 if let Err(e) = copy_with_ttl(engine, &secret, ttl) {
                     eprintln!("⚠️ Failed to copy to clipboard: {e}");
@@ -275,12 +278,12 @@ impl<'a> Vault<'a> {
                     avoid_from_cfg
                 };
             }
-            let rng: Arc<dyn crate::core::ports::Rng> = Arc::new(SystemRng);
+            let rng: Arc<dyn Rng> = Arc::new(SystemRng);
             let gen = DefaultPasswordGenerator::new(rng);
             let generated = gen.generate(&policy)?;
             // Show a basic strength hint (interactive UX), without echoing the secret
             let bits = if policy.passphrase {
-                estimate_bits_passphrase(policy.words, crate::core::wordlist::WORDS.len())
+                estimate_bits_passphrase(policy.words, crate::cryptography::wordlist::WORDS.len())
             } else {
                 estimate_bits_char_mode(&policy)
             };
@@ -486,7 +489,7 @@ impl<'a> Vault<'a> {
         let fp = header_fingerprint_excluding_nonce(&hdr);
         let dk_path = dk_session_file_for(&self.config.vault_path);
         let key_vec = SecretBox::new(Box::new(key_arr.to_vec()));
-        spawn_blocking(move || write_dk_session(&dk_path, &fp, &key_vec, ttl))
+        spawn_blocking(move || save_derived_key_session(&dk_path, &fp, &key_vec, ttl))
             .await
             .map_err(|_| anyhow!("task join error"))??;
         println!("🔓 Unlocked for {ttl_secs}s (derived key cached).");
@@ -495,15 +498,13 @@ impl<'a> Vault<'a> {
 
     pub async fn handle_lock(&self) -> Result<()> {
         let dk_path = dk_session_file_for(&self.config.vault_path);
-        spawn_blocking(move || clear_dk_session(&dk_path))
+        spawn_blocking(move || clear(&dk_path))
             .await
             .map_err(|_| anyhow!("task join error"))??;
         println!("🔒 Locked (derived-key session cleared).");
         Ok(())
     }
 }
-
-// clipboard environment warning is centralized in core::clipboard::environment_warning()
 
 // Options for the add command, constructed by CLI layer
 #[derive(Debug, Clone)]

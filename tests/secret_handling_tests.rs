@@ -1,4 +1,4 @@
-use kevi::core::entry::VaultEntry;
+use kevi::vault::models::VaultEntry;
 use secrecy::{ExposeSecret, SecretString};
 
 #[test]

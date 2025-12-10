@@ -13,12 +13,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::task::spawn_blocking;
 
-use crate::core::adapters::{CachedKeyResolver, FileByteStore, RonCodec};
-use crate::core::clipboard::{copy_with_ttl, ttl_seconds, SystemClipboardEngine};
-use crate::core::ports::PasswordGenerator;
-use crate::core::ports::{ByteStore, KeyResolver, VaultCodec};
-use crate::core::service::VaultService;
-use crate::core::vault::GetField;
+use crate::filesystem::clipboard::{copy_with_ttl, ttl_seconds, SystemClipboardEngine};
+use crate::filesystem::store::FileByteStore;
+use crate::session_management::resolver::CachedKeyResolver;
+use crate::vault::codec::RonCodec;
+use crate::vault::handlers::GetField;
+use crate::vault::ports::PasswordGenerator;
+use crate::vault::ports::{ByteStore, KeyResolver, VaultCodec};
+use crate::vault::service::VaultService;
 use secrecy::SecretString;
 
 use self::app::{App, Mode, View};
@@ -90,9 +92,7 @@ pub async fn launch(config: &Config) -> Result<()> {
                                                     &secret,
                                                     Duration::from_secs(ttl_secs),
                                                 );
-                                                app.toast(format!(
-                                                    "Password copied ({ttl_secs}s)"
-                                                ));
+                                                app.toast(format!("Password copied ({ttl_secs}s)"));
                                             } else {
                                                 app.toast("Clipboard unavailable".to_string());
                                             }
@@ -107,9 +107,7 @@ pub async fn launch(config: &Config) -> Result<()> {
                                                     &secret,
                                                     Duration::from_secs(ttl_secs),
                                                 );
-                                                app.toast(format!(
-                                                    "Username copied ({ttl_secs}s)"
-                                                ));
+                                                app.toast(format!("Username copied ({ttl_secs}s)"));
                                             } else {
                                                 app.toast("Clipboard unavailable".to_string());
                                             }
@@ -200,17 +198,23 @@ pub async fn launch(config: &Config) -> Result<()> {
                                                 Some(app.form_notes.trim().to_string())
                                             };
                                             let label_for_save = label.clone();
+                                            let form_pw = app.form_password.clone();
                                             let original_label = app.form_original_label.clone();
                                             let svc = service.clone();
                                             if is_add {
                                                 let _ = spawn_blocking(move || {
-                                                    // Generate password via default generator
-                                                    let gen2 = crate::core::generator::DefaultPasswordGenerator::new(Arc::new(crate::core::generator::SystemRng));
-                                                    let pw2 = gen2.generate(&crate::core::ports::GenPolicy::default())?;
-                                                    let entry_real = crate::core::entry::VaultEntry {
+                                                    let pw_final = if form_pw.is_empty() {
+                                                        // Generate password via default generator
+                                                        let gen2 = crate::cryptography::generator::DefaultPasswordGenerator::new(Arc::new(crate::cryptography::generator::SystemRng));
+                                                        gen2.generate(&crate::vault::ports::GenPolicy::default())?
+                                                    } else {
+                                                        form_pw
+                                                    };
+
+                                                    let entry_real = crate::vault::models::VaultEntry {
                                                         label: label_for_save,
                                                         username: user_opt.map(|u| SecretString::new(u.into())),
-                                                        password: SecretString::new(pw2.into()),
+                                                        password: SecretString::new(pw_final.into()),
                                                         notes: notes_opt,
                                                     };
                                                     svc.add_entry(entry_real)
@@ -225,6 +229,8 @@ pub async fn launch(config: &Config) -> Result<()> {
                                                         vault_entries[pos].label = label_for_save;
                                                         vault_entries[pos].username = user_opt
                                                             .map(|u| SecretString::new(u.into()));
+                                                        vault_entries[pos].password =
+                                                            SecretString::new(form_pw.into());
                                                         vault_entries[pos].notes = notes_opt;
                                                         svc.save(&vault_entries)
                                                     } else {

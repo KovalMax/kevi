@@ -1,7 +1,7 @@
 use kevi::config::app_config::Config;
-use kevi::core::entry::VaultEntry;
-use kevi::core::store::save_vault_file;
-use kevi::core::vault::Vault;
+use kevi::vault::handlers::Vault;
+use kevi::vault::models::VaultEntry;
+use kevi::vault::persistence::save_vault_file;
 use secrecy::SecretString;
 use tempfile::tempdir;
 

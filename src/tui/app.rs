@@ -1,5 +1,5 @@
-use crate::core::entry::VaultEntry;
-use crate::core::vault::GetField;
+use crate::vault::handlers::GetField;
+use crate::vault::models::VaultEntry;
 use secrecy::ExposeSecret;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -21,6 +21,7 @@ pub enum View {
 pub enum FormField {
     Label,
     User,
+    Password,
     Notes,
 }
 
@@ -37,6 +38,7 @@ pub struct App {
     pub form_field: FormField,
     pub form_label: String,
     pub form_user: String,
+    pub form_password: String,
     pub form_notes: String,
     pub form_original_label: String,
     // Toggle for revealing password in Details view
@@ -57,6 +59,7 @@ impl App {
             form_field: FormField::Label,
             form_label: String::new(),
             form_user: String::new(),
+            form_password: String::new(),
             form_notes: String::new(),
             form_original_label: String::new(),
             reveal_password: false,
@@ -181,6 +184,7 @@ impl App {
         self.form_field = FormField::Label;
         self.form_label.clear();
         self.form_user.clear();
+        self.form_password.clear();
         self.form_notes.clear();
         self.form_original_label.clear();
     }
@@ -196,6 +200,7 @@ impl App {
                 .as_ref()
                 .map(|s| s.expose_secret().to_string())
                 .unwrap_or_default();
+            self.form_password = e.password.expose_secret().to_string();
             self.form_notes = e.notes.clone().unwrap_or_default();
             self.form_original_label = e.label.clone();
         }
@@ -212,7 +217,8 @@ impl App {
     pub fn next_field(&mut self) {
         self.form_field = match self.form_field {
             FormField::Label => FormField::User,
-            FormField::User => FormField::Notes,
+            FormField::User => FormField::Password,
+            FormField::Password => FormField::Notes,
             FormField::Notes => FormField::Label,
         };
     }
@@ -220,13 +226,15 @@ impl App {
         self.form_field = match self.form_field {
             FormField::Label => FormField::Notes,
             FormField::User => FormField::Label,
-            FormField::Notes => FormField::User,
+            FormField::Password => FormField::User,
+            FormField::Notes => FormField::Password,
         };
     }
     pub fn update_form_char(&mut self, c: char) {
         match self.form_field {
             FormField::Label => self.form_label.push(c),
             FormField::User => self.form_user.push(c),
+            FormField::Password => self.form_password.push(c),
             FormField::Notes => self.form_notes.push(c),
         }
     }
@@ -237,6 +245,9 @@ impl App {
             }
             FormField::User => {
                 self.form_user.pop();
+            }
+            FormField::Password => {
+                self.form_password.pop();
             }
             FormField::Notes => {
                 self.form_notes.pop();

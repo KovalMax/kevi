@@ -1,8 +1,8 @@
 use anyhow::Result;
 use secrecy::SecretBox;
 
-use super::crypto::KeviHeader;
-use super::entry::VaultEntry;
+use crate::cryptography::primitives::KeviHeader;
+use crate::vault::models::VaultEntry;
 
 // Randomness provider for deterministic testing.
 pub trait Rng: Send + Sync {
