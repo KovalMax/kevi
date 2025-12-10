@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
@@ -60,12 +60,13 @@ jobs:
         if: runner.os == 'Linux'
         uses: taiki-e/install-action@v2
         with:
-          tool: cyclonedx-bom
+          tool: cargo-cyclonedx
 
       - name: Generate SBOM (CycloneDX)
         if: runner.os == 'Linux'
         run: |
-          cyclonedx-bom -o sbom.json -j
+          cargo cyclonedx --format json
+          mv bom.json sbom.json
 
       - name: Checksums
         shell: bash
