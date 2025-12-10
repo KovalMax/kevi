@@ -11,7 +11,7 @@ async fn vault_handle_header_async_ok() {
     let path = td.path().join("vault.ron");
     let pw = "pw";
 
-    // Seed a minimal encrypted vault
+    // Seed minimal encrypted vault
     let entries: Vec<VaultEntry> = vec![VaultEntry {
         label: "x".into(),
         username: Some(SecretString::new("u".into())),
@@ -55,7 +55,7 @@ async fn vault_handle_list_async_ok() {
 
     let cfg = Config::create(Some(path.clone()), None).unwrap();
     let v = Vault::create(&cfg);
-    // Run list without query/json to exercise async path
+    // Run list without query/json to exercise an async path
     let res = v.handle_list(None, false, false).await;
     assert!(res.is_ok());
 }

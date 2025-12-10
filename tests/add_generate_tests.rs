@@ -12,7 +12,7 @@ fn cli_add_generate_char_mode_creates_expected_password() {
     let path = td.path().join("vault.ron");
     let pw = "pw";
 
-    // Run CLI to add generated password entry
+    // Run CLI to add a generated password entry
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("KEVI_PASSWORD", pw)
         .arg("add")
@@ -49,7 +49,7 @@ fn cli_add_generate_passphrase_mode_produces_words() {
     let path = td.path().join("vault.ron");
     let pw = "pw";
 
-    // Run CLI to add passphrase-based entry
+    // Run CLI to add a passphrase-based entry
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("KEVI_PASSWORD", pw)
         .arg("add")

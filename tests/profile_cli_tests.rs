@@ -60,7 +60,7 @@ fn profile_add_list_default_flow() {
         .success()
         .stdout(predicate::str::contains("Default profile: work"));
 
-    // 6. Verify config persistence by reading file
+    // 6. Verify config persistence by reading a file
     let config_path = config_dir.join("kevi/config.toml");
     let content = fs::read_to_string(config_path).unwrap();
     assert!(content.contains("[profiles.work]"));

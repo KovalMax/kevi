@@ -22,7 +22,7 @@ fn get_warns_in_ssh_like_environment() {
     };
     save_vault_file(&[entry], &path, pw).expect("seed vault");
 
-    // Simulate SSH session; do not use --no-copy to exercise clipboard path
+    // Simulate SSH session; do not use --no-copy to exercise a clipboard path
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("KEVI_PASSWORD", pw)
         .env("SSH_CONNECTION", "1")

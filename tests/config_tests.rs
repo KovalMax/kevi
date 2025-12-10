@@ -4,11 +4,10 @@ use kevi::vault::ports::ByteStore;
 use serial_test::serial;
 use std::env;
 use std::fs;
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tempfile::tempdir;
 
-fn write_config_file(_dir: &std::path::Path, content: &str) {
+fn write_config_file(_dir: &Path, content: &str) {
     // Honor KEVI_CONFIG_DIR to avoid cross-test interference
     let base = env::var("KEVI_CONFIG_DIR").unwrap_or_else(|_| {
         dirs::config_dir()

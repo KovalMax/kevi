@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tempfile::tempdir;
 
 #[test]
-fn service_add_and_load_roundtrip() {
+fn service_add_and_load_round_trip() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("vault.ron");
     env::set_var("KEVI_PASSWORD", "svcpass");

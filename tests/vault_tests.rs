@@ -3,7 +3,7 @@ use kevi::vault::handlers::{GetField, Vault};
 use kevi::vault::models::VaultEntry;
 use kevi::vault::persistence::{load_vault_file, save_vault_file};
 use secrecy::SecretString;
-use std::env;
+use std::{env, slice};
 use std::path::PathBuf;
 use tempfile::tempdir;
 
@@ -23,7 +23,7 @@ async fn test_handle_get_existing_entry() {
         notes: Some("note".into()),
     };
 
-    save_vault_file(&[entry.clone()], &path, pw).unwrap();
+    save_vault_file(slice::from_ref(&entry), &path, pw).unwrap();
     let config = Config::create(Some(path.clone()), None).unwrap();
     let vault = Vault::create(&config);
     env::set_var("KEVI_PASSWORD", pw);
@@ -44,7 +44,7 @@ async fn test_handle_rm_existing_entry() {
         notes: None,
     };
 
-    save_vault_file(&[entry.clone()], &path, pw).unwrap();
+    save_vault_file(slice::from_ref(&entry), &path, pw).unwrap();
     let config = Config::create(Some(path.clone()), None).unwrap();
     let vault = Vault::create(&config);
     env::set_var("KEVI_PASSWORD", pw);

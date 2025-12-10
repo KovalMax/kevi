@@ -2,7 +2,7 @@ use kevi::cryptography::primitives::decrypt_vault;
 use kevi::vault::models::VaultEntry;
 use kevi::vault::persistence::save_vault_file;
 use secrecy::SecretString;
-use std::fs;
+use std::{fs, slice};
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -28,7 +28,7 @@ fn rotating_backups_keep_two_versions_and_prune() {
         password: SecretString::new("p1".into()),
         notes: None,
     };
-    save_vault_file(&[e1.clone()], &path, pw).expect("save 1");
+    save_vault_file(slice::from_ref(&e1), &path, pw).expect("save 1");
 
     // Second content
     let e2 = VaultEntry {
@@ -37,7 +37,7 @@ fn rotating_backups_keep_two_versions_and_prune() {
         password: SecretString::new("p2".into()),
         notes: None,
     };
-    save_vault_file(&[e2.clone()], &path, pw).expect("save 2");
+    save_vault_file(slice::from_ref(&e2), &path, pw).expect("save 2");
 
     // Third content
     let e3 = VaultEntry {
@@ -46,7 +46,7 @@ fn rotating_backups_keep_two_versions_and_prune() {
         password: SecretString::new("p3".into()),
         notes: None,
     };
-    save_vault_file(&[e3.clone()], &path, pw).expect("save 3");
+    save_vault_file(slice::from_ref(&e3), &path, pw).expect("save 3");
 
     // Main file should be latest (e3)
     let main_bytes = fs::read(&path).unwrap();

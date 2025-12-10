@@ -35,7 +35,7 @@ fn list_filters_with_query_and_emits_json() {
     ];
     save_vault_file(&entries, &path, pw).expect("seed vault");
 
-    // Filter: only beta should appear
+    // Filter: only the beta should appear
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("KEVI_PASSWORD", pw)
         .arg("list")
@@ -55,7 +55,7 @@ fn list_filters_with_query_and_emits_json() {
     assert_eq!(obj.get("label").unwrap().as_str().unwrap(), "beta");
     assert_eq!(obj.get("username").unwrap().as_str().unwrap(), "bob");
 
-    // JSON without show-users should not include username field
+    // JSON without show-users should not include a username field
     let mut cmd2 = Command::cargo_bin("kevi").unwrap();
     cmd2.env("KEVI_PASSWORD", pw)
         .arg("list")
