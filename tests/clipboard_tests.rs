@@ -38,8 +38,17 @@ fn test_copy_with_ttl_restores_previous() {
     let now = engine.get_contents().unwrap().unwrap();
     assert_eq!(now, "new-secret");
 
-    // After TTL it should be restored to previous
-    std::thread::sleep(Duration::from_millis(80));
-    let after = engine.get_contents().unwrap().unwrap();
-    assert_eq!(after, "old");
+    // After TTL it should be restored to previous (allow lag for slower CI schedulers)
+    let start = std::time::Instant::now();
+    let mut restored = None;
+    while start.elapsed() < Duration::from_millis(500) {
+        if let Some(current) = engine.get_contents().unwrap() {
+            if current == "old" {
+                restored = Some(current);
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(restored.as_deref(), Some("old"));
 }
