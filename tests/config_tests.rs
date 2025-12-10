@@ -1,4 +1,4 @@
-use kevi::config::config::Config;
+use kevi::config::app_config::Config;
 use kevi::core::adapters::FileByteStore;
 use kevi::core::ports::ByteStore;
 use serial_test::serial;

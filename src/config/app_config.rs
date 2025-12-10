@@ -183,8 +183,7 @@ pub fn save_file_config(path: &PathBuf, cfg: &FileConfig) -> std::io::Result<()>
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let s = toml::to_string_pretty(cfg)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let s = toml::to_string_pretty(cfg).map_err(std::io::Error::other)?;
     std::fs::write(path, s)
 }
 

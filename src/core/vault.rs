@@ -1,4 +1,4 @@
-use crate::config::config::Config;
+use crate::config::app_config::Config;
 use crate::core::adapters::{CachedKeyResolver, FileByteStore, RonCodec};
 use crate::core::clipboard::{
     copy_with_ttl, environment_warning, ttl_seconds, SystemClipboardEngine,
@@ -75,8 +75,8 @@ impl<'a> Vault<'a> {
                         "Unknown"
                     }
                 };
-                let salt_hex: String = hdr.salt.iter().map(|b| format!("{:02x}", b)).collect();
-                let nonce_hex: String = hdr.nonce.iter().map(|b| format!("{:02x}", b)).collect();
+                let salt_hex: String = hdr.salt.iter().map(|b| format!("{b:02x}")).collect();
+                let nonce_hex: String = hdr.nonce.iter().map(|b| format!("{b:02x}")).collect();
                 println!("KEVI header:");
                 println!("  version: {}", hdr.version);
                 println!("  kdf: {} ({})", kdf, hdr.kdf_id);
@@ -84,8 +84,8 @@ impl<'a> Vault<'a> {
                 println!("  argon2 m_cost_kib: {}", hdr.m_cost_kib);
                 println!("  argon2 t_cost: {}", hdr.t_cost);
                 println!("  argon2 p_lanes: {}", hdr.p_lanes);
-                println!("  salt: {}", salt_hex);
-                println!("  nonce: {}", nonce_hex);
+                println!("  salt: {salt_hex}");
+                println!("  nonce: {nonce_hex}");
                 Ok(())
             }
             Err(e) => Err(anyhow!("Failed to parse header: {}", e)),
@@ -121,7 +121,7 @@ impl<'a> Vault<'a> {
         let entry = match vault.iter().find(|e| e.label == key) {
             Some(e) => e,
             None => {
-                println!("❌ No entry found with key '{}'", key);
+                println!("❌ No entry found with key '{key}'");
                 return Ok(());
             }
         };
@@ -137,13 +137,13 @@ impl<'a> Vault<'a> {
         };
 
         let Some(value) = selected else {
-            println!("❌ Field is empty for '{}'", key);
+            println!("❌ Field is empty for '{key}'");
             return Ok(());
         };
 
         // Echo to stdout if requested
         if echo {
-            println!("{}", value);
+            println!("{value}");
             if no_copy {
                 return Ok(());
             }
@@ -160,7 +160,7 @@ impl<'a> Vault<'a> {
 
         // Copy to clipboard with TTL
         if let Some(warn) = environment_warning() {
-            eprintln!("⚠️ {}", warn);
+            eprintln!("⚠️ {warn}");
         }
         match SystemClipboardEngine::new() {
             Ok(engine_impl) => {
@@ -168,13 +168,13 @@ impl<'a> Vault<'a> {
                     Arc::new(engine_impl) as Arc<dyn crate::core::clipboard::ClipboardEngine>;
                 let secret = SecretString::new(value.into());
                 if let Err(e) = copy_with_ttl(engine, &secret, ttl) {
-                    eprintln!("⚠️ Failed to copy to clipboard: {}", e);
+                    eprintln!("⚠️ Failed to copy to clipboard: {e}");
                 } else {
                     // Successful copy: do not print secrets or confirmations to stdout by default.
                 }
             }
             Err(e) => {
-                eprintln!("⚠️ Clipboard not available: {}", e);
+                eprintln!("⚠️ Clipboard not available: {e}");
             }
         }
 
@@ -195,7 +195,7 @@ impl<'a> Vault<'a> {
                 println!("Username: (none)");
             }
             if let Some(notes) = &entry.notes {
-                println!("Notes:    {}", notes);
+                println!("Notes:    {notes}");
             } else {
                 println!("Notes:    (none)");
             }
@@ -225,7 +225,7 @@ impl<'a> Vault<'a> {
             Text::new("Label (key)").prompt()?
         };
         if vault.iter().any(|e| e.label == label) {
-            println!("❌ Entry with label '{}' already exists.", label);
+            println!("❌ Entry with label '{label}' already exists.");
             return Ok(());
         }
         let username = if let Some(u) = opts.user.clone() {
@@ -242,8 +242,10 @@ impl<'a> Vault<'a> {
         // Determine password
         let password = if opts.generate {
             // Build policy
-            let mut policy = GenPolicy::default();
-            policy.passphrase = opts.passphrase;
+            let mut policy = GenPolicy {
+                passphrase: opts.passphrase,
+                ..GenPolicy::default()
+            };
             if policy.passphrase {
                 policy.words = opts
                     .words
@@ -320,12 +322,12 @@ impl<'a> Vault<'a> {
             .await
             .map_err(|_| anyhow!("task join error"))??;
         if !entries.iter().any(|e| e.label == key) {
-            println!("❌ No entry found with key '{}'", key);
+            println!("❌ No entry found with key '{key}'");
             return Ok(());
         }
 
         if !yes {
-            let msg = format!("Delete entry '{}' ?", key);
+            let msg = format!("Delete entry '{key}' ?");
             let proceed = Confirm::new(&msg).with_default(false).prompt()?;
             if !proceed {
                 println!("❎ Deletion cancelled.");
@@ -339,10 +341,10 @@ impl<'a> Vault<'a> {
             .await
             .map_err(|_| anyhow!("task join error"))??;
         if removed {
-            println!("🗑️ Entry '{}' removed.", key);
+            println!("🗑️ Entry '{key}' removed.");
         } else {
             // Should not happen due to pre-check, but handle race
-            println!("❌ No entry found with key '{}'", key);
+            println!("❌ No entry found with key '{key}'");
         }
         Ok(())
     }
@@ -487,7 +489,7 @@ impl<'a> Vault<'a> {
         spawn_blocking(move || write_dk_session(&dk_path, &fp, &key_vec, ttl))
             .await
             .map_err(|_| anyhow!("task join error"))??;
-        println!("🔓 Unlocked for {}s (derived key cached).", ttl_secs);
+        println!("🔓 Unlocked for {ttl_secs}s (derived key cached).");
         Ok(())
     }
 

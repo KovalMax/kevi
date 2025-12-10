@@ -15,17 +15,16 @@ fn main() {
             }
         })
         .unwrap_or_else(|| "unknown".to_string());
-    println!("cargo:rustc-env=KEVI_GIT_SHA={}", git_sha);
+    println!("cargo:rustc-env=KEVI_GIT_SHA={git_sha}");
 
     // Build time (UTC, RFC3339)
-    let build_time = match chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true) {
-        s => s,
-    };
-    println!("cargo:rustc-env=KEVI_BUILD_TIME={}", build_time);
+    let build_time = chrono::Utc::now()
+        .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    println!("cargo:rustc-env=KEVI_BUILD_TIME={build_time}");
 
     // Target triple
     let target = env::var("TARGET").unwrap_or_else(|_| "unknown-target".to_string());
-    println!("cargo:rustc-env=KEVI_TARGET={}", target);
+    println!("cargo:rustc-env=KEVI_TARGET={target}");
 
     // Feature flags summary
     let mut feats: Vec<&'static str> = Vec::new();
@@ -37,5 +36,5 @@ fn main() {
     } else {
         feats.join(",")
     };
-    println!("cargo:rustc-env=KEVI_FEATURES={}", features);
+    println!("cargo:rustc-env=KEVI_FEATURES={features}");
 }

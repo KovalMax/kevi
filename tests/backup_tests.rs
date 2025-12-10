@@ -5,10 +5,10 @@ use secrecy::SecretString;
 use std::fs;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tempfile::tempdir;
 
-fn bp(path: &PathBuf, n: usize) -> PathBuf {
+fn bp(path: &Path, n: usize) -> PathBuf {
     PathBuf::from(format!("{}.{n}", path.display()))
 }
 

@@ -1,5 +1,6 @@
+#![allow(clippy::module_inception)]
 use crate::cli::cli::{Cli, Commands, GetFieldArg, ProfileCommand};
-use crate::config::config::{
+use crate::config::app_config::{
     load_file_config_with_path, save_file_config, Config, FileProfileConfig,
 };
 use crate::core::vault::Vault;

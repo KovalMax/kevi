@@ -158,6 +158,12 @@ pub struct BypassKeyResolver;
 
 impl PasswordResolver for BypassKeyResolver {}
 
+impl Default for BypassKeyResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BypassKeyResolver {
     pub fn new() -> Self {
         Self

@@ -1,4 +1,4 @@
-use kevi::config::config::Config;
+use kevi::config::app_config::Config;
 use kevi::core::adapters::{CachedKeyResolver, FileByteStore, RonCodec};
 use kevi::core::dk_session::{dk_session_file_for, read_dk_session};
 use kevi::core::entry::VaultEntry;

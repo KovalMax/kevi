@@ -5,11 +5,11 @@ use predicates::prelude::*;
 use secrecy::SecretString;
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::tempdir;
 
-fn run_header(path: &PathBuf) -> assert_cmd::assert::Assert {
+fn run_header(path: &Path) -> assert_cmd::assert::Assert {
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.arg("header")
         .arg("--path")

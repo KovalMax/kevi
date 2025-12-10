@@ -247,8 +247,10 @@ mod tests {
     fn char_generator_respects_classes_and_length() {
         let rng = Arc::new(MockRng::new(&[1, 2, 3, 4, 5, 6, 7, 8]));
         let gen = DefaultPasswordGenerator::new(rng);
-        let mut p = GenPolicy::default();
-        p.length = 24;
+        let p = GenPolicy {
+            length: 24,
+            ..GenPolicy::default()
+        };
         let s = gen.generate(&p).unwrap();
         assert_eq!(s.len(), 24);
         assert!(s.chars().any(|c| c.is_ascii_lowercase()));
@@ -261,10 +263,12 @@ mod tests {
     fn char_generator_no_symbols_no_digits() {
         let rng = Arc::new(MockRng::new(&[9, 9, 9, 9, 9, 9, 9, 9]));
         let gen = DefaultPasswordGenerator::new(rng);
-        let mut p = GenPolicy::default();
-        p.symbols = false;
-        p.digits = false;
-        p.length = 12;
+        let p = GenPolicy {
+            symbols: false,
+            digits: false,
+            length: 12,
+            ..GenPolicy::default()
+        };
         let s = gen.generate(&p).unwrap();
         assert_eq!(s.len(), 12);
         assert!(s.chars().all(|c| c.is_ascii_alphabetic()));
@@ -274,11 +278,13 @@ mod tests {
     fn invalid_policy_rejected() {
         let rng = Arc::new(MockRng::new(&[0; 32]));
         let gen = DefaultPasswordGenerator::new(rng);
-        let mut p = GenPolicy::default();
-        p.lower = false;
-        p.upper = false;
-        p.digits = false;
-        p.symbols = false;
+        let mut p = GenPolicy {
+            lower: false,
+            upper: false,
+            digits: false,
+            symbols: false,
+            ..GenPolicy::default()
+        };
         assert!(gen.generate(&p).is_err());
         p.lower = true;
         p.upper = true;
@@ -292,10 +298,12 @@ mod tests {
     fn passphrase_mode_generates_words() {
         let rng = Arc::new(MockRng::new(&[1, 2, 3, 4, 5, 6, 7, 8]));
         let gen = DefaultPasswordGenerator::new(rng);
-        let mut p = GenPolicy::default();
-        p.passphrase = true;
-        p.words = 5;
-        p.sep = ":".to_string();
+        let p = GenPolicy {
+            passphrase: true,
+            words: 5,
+            sep: ":".to_string(),
+            ..GenPolicy::default()
+        };
         let s = gen.generate(&p).unwrap();
         let parts: Vec<&str> = s.split(':').collect();
         assert_eq!(parts.len(), 5);

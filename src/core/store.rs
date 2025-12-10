@@ -15,7 +15,7 @@ pub fn load_vault_file(path: &Path, password: &str) -> Result<Vec<VaultEntry>> {
     }
 
     // Read raw bytes
-    let mut file = File::open(&path).context("Failed to open vault file")?;
+    let mut file = File::open(path).context("Failed to open vault file")?;
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)?;
 

@@ -1,4 +1,4 @@
-use crate::config::config::Config;
+use crate::config::app_config::Config;
 use anyhow::{anyhow, Result};
 use copypasta::{ClipboardContext, ClipboardProvider};
 use secrecy::{ExposeSecret, SecretString};

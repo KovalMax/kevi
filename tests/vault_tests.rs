@@ -1,4 +1,4 @@
-use kevi::config::config::Config;
+use kevi::config::app_config::Config;
 use kevi::core::entry::VaultEntry;
 use kevi::core::store::{load_vault_file, save_vault_file};
 use kevi::core::vault::{GetField, Vault};
@@ -52,5 +52,5 @@ async fn test_handle_rm_existing_entry() {
     assert!(result.is_ok());
 
     let loaded = load_vault_file(&path, pw).unwrap();
-    assert!(loaded.iter().find(|e| e.label == "rmtest").is_none());
+    assert!(!loaded.iter().any(|e| e.label == "rmtest"));
 }

@@ -144,13 +144,13 @@ pub fn parse_kevi_header(data: &[u8]) -> std::result::Result<(KeviHeader, usize)
 pub fn header_fingerprint_excluding_nonce(hdr: &KeviHeader) -> String {
     let mut hasher = Sha256::new();
     hasher.update(HEADER_MAGIC);
-    hasher.update(&hdr.version.to_le_bytes());
-    hasher.update(&[hdr.kdf_id]);
-    hasher.update(&[hdr.aead_id]);
-    hasher.update(&hdr.m_cost_kib.to_le_bytes());
-    hasher.update(&hdr.t_cost.to_le_bytes());
-    hasher.update(&hdr.p_lanes.to_le_bytes());
-    hasher.update(&hdr.salt);
+    hasher.update(hdr.version.to_le_bytes());
+    hasher.update([hdr.kdf_id]);
+    hasher.update([hdr.aead_id]);
+    hasher.update(hdr.m_cost_kib.to_le_bytes());
+    hasher.update(hdr.t_cost.to_le_bytes());
+    hasher.update(hdr.p_lanes.to_le_bytes());
+    hasher.update(hdr.salt);
     let digest = hasher.finalize();
     hex::encode(digest)
 }

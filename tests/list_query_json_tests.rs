@@ -68,5 +68,5 @@ fn list_filters_with_query_and_emits_json() {
     let out2 = String::from_utf8(assert2.get_output().stdout.clone()).unwrap();
     let v2: serde_json::Value = serde_json::from_str(&out2).expect("valid json");
     let arr2 = v2.as_array().unwrap();
-    assert!(arr2.iter().all(|o| !o.get("username").is_some()));
+    assert!(arr2.iter().all(|o| o.get("username").is_none()));
 }

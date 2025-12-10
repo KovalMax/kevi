@@ -1,4 +1,4 @@
-use kevi::config::config::Config;
+use kevi::config::app_config::Config;
 use kevi::core::vault::Vault;
 use std::env;
 use std::fs;

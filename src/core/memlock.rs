@@ -5,7 +5,6 @@ use anyhow::Result;
 /// On Unix when the `memlock` feature is enabled, these functions attempt to
 /// mlock/munlock the given slice for the duration of a sensitive operation.
 /// On other platforms or when the feature is disabled, they are no‑ops.
-
 #[inline]
 pub fn lock_slice(_data: &mut [u8]) -> Result<()> {
     #[cfg(all(target_family = "unix", feature = "memlock"))]

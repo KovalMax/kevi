@@ -2,7 +2,7 @@ pub mod app;
 pub mod theme;
 pub mod views;
 
-use crate::config::config::Config;
+use crate::config::app_config::Config;
 use anyhow::{anyhow, Result};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
@@ -66,7 +66,7 @@ pub async fn launch(config: &Config) -> Result<()> {
             .checked_sub(last_tick.elapsed())
             .unwrap_or(Duration::from_millis(0));
 
-        if crossterm::event::poll(timeout)? {
+        if event::poll(timeout)? {
             if let Event::Key(k) = event::read()? {
                 if k.kind == KeyEventKind::Press {
                     // Global per-view key handling
@@ -91,8 +91,7 @@ pub async fn launch(config: &Config) -> Result<()> {
                                                     Duration::from_secs(ttl_secs),
                                                 );
                                                 app.toast(format!(
-                                                    "Password copied ({}s)",
-                                                    ttl_secs
+                                                    "Password copied ({ttl_secs}s)"
                                                 ));
                                             } else {
                                                 app.toast("Clipboard unavailable".to_string());
@@ -109,8 +108,7 @@ pub async fn launch(config: &Config) -> Result<()> {
                                                     Duration::from_secs(ttl_secs),
                                                 );
                                                 app.toast(format!(
-                                                    "Username copied ({}s)",
-                                                    ttl_secs
+                                                    "Username copied ({ttl_secs}s)"
                                                 ));
                                             } else {
                                                 app.toast("Clipboard unavailable".to_string());
@@ -141,7 +139,7 @@ pub async fn launch(config: &Config) -> Result<()> {
                                             &secret,
                                             Duration::from_secs(ttl_secs),
                                         );
-                                        app.toast(format!("Password copied ({}s)", ttl_secs));
+                                        app.toast(format!("Password copied ({ttl_secs}s)"));
                                     } else {
                                         app.toast("Clipboard unavailable".to_string());
                                     }
@@ -156,7 +154,7 @@ pub async fn launch(config: &Config) -> Result<()> {
                                             &secret,
                                             Duration::from_secs(ttl_secs),
                                         );
-                                        app.toast(format!("Username copied ({}s)", ttl_secs));
+                                        app.toast(format!("Username copied ({ttl_secs}s)"));
                                     } else {
                                         app.toast("Clipboard unavailable".to_string());
                                     }
@@ -218,17 +216,17 @@ pub async fn launch(config: &Config) -> Result<()> {
                                                     svc.add_entry(entry_real)
                                                 }).await.map_err(|_| anyhow!("task join error"))?;
                                             } else {
-                                                let _ = spawn_blocking(move || {
-                                                    let mut ents = svc.load()?;
-                                                    if let Some(pos) = ents
+                                                spawn_blocking(move || {
+                                                    let mut vault_entries = svc.load()?;
+                                                    if let Some(pos) = vault_entries
                                                         .iter()
                                                         .position(|e| e.label == original_label)
                                                     {
-                                                        ents[pos].label = label_for_save;
-                                                        ents[pos].username = user_opt
+                                                        vault_entries[pos].label = label_for_save;
+                                                        vault_entries[pos].username = user_opt
                                                             .map(|u| SecretString::new(u.into()));
-                                                        ents[pos].notes = notes_opt;
-                                                        svc.save(&ents)
+                                                        vault_entries[pos].notes = notes_opt;
+                                                        svc.save(&vault_entries)
                                                     } else {
                                                         Ok(())
                                                     }
@@ -266,14 +264,12 @@ pub async fn launch(config: &Config) -> Result<()> {
                                             .await;
                                         // Reload
                                         let svc_reload = service.clone();
-                                        if let Ok(entries) =
+                                        if let Ok(Ok(ents)) =
                                             spawn_blocking(move || svc_reload.load())
                                                 .await
                                                 .map_err(|_| anyhow!("task join error"))
                                         {
-                                            if let Ok(ents) = entries {
-                                                app.replace_entries(ents);
-                                            }
+                                            app.replace_entries(ents);
                                         }
                                         app.view = View::List;
                                         app.toast("Deleted".to_string());

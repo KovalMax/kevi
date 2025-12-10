@@ -2,8 +2,8 @@ use kevi::core::entry::VaultEntry;
 use secrecy::{ExposeSecret, SecretString};
 
 #[test]
-fn serde_roundtrip_username_and_password() {
-    // Build an entry with secret username and password
+fn serde_round_trip_username_and_password() {
+    // Build an entry with a secret username and password
     let entry = VaultEntry {
         label: "label".to_string(),
         username: Some(SecretString::new("user123".into())),
@@ -24,8 +24,8 @@ fn serde_roundtrip_username_and_password() {
 #[test]
 fn debug_redacts_secrets() {
     let secret = SecretString::new("super-secret".into());
-    let dbg = format!("{:?}", secret);
-    // Should not contain the actual secret, and typically contains REDACTED marker
+    let dbg = format!("{secret:?}");
+    // Should not contain the actual secret and typically contains REDACTED marker
     assert!(
         !dbg.contains("super-secret"),
         "Debug must not reveal secret"

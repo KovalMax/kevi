@@ -19,7 +19,7 @@ fn dk_session_debug_is_redacted_and_round_trips() {
     assert_eq!(sess.key.expose_secret().len(), 32);
 
     // Debug must not reveal the key bytes
-    let dbg = format!("{:?}", sess);
+    let dbg = format!("{sess:?}");
     assert!(!dbg.contains("42"), "debug must not include raw key bytes");
     assert!(dbg.contains("<REDACTED>"));
 }

@@ -40,7 +40,7 @@ pub fn render_list(f: &mut Frame, app: &App) {
                 theme.normal_style()
             };
             let marker = if is_sel { "> " } else { "  " };
-            let line = Line::from(format!("{}{}", marker, lbl));
+            let line = Line::from(format!("{marker}{lbl}"));
             ListItem::new(line).style(style)
         })
         .collect();

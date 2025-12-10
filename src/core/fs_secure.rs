@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::Write;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
@@ -29,7 +29,6 @@ pub fn atomic_write_secure(path: &Path, bytes: &[u8]) -> Result<()> {
 
     #[cfg(target_family = "unix")]
     {
-        let _ = OpenOptions::new().create(true).write(true).open(&tmp_path);
         let perm = fs::Permissions::from_mode(0o600);
         let _ = fs::set_permissions(&tmp_path, perm);
     }
