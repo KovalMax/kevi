@@ -3,8 +3,8 @@ use kevi::vault::handlers::{GetField, Vault};
 use kevi::vault::models::VaultEntry;
 use kevi::vault::persistence::{load_vault_file, save_vault_file};
 use secrecy::SecretString;
-use std::{env, slice};
 use std::path::PathBuf;
+use std::{env, slice};
 use tempfile::tempdir;
 
 fn setup_vault_path(file_name: &str) -> PathBuf {

@@ -2,10 +2,10 @@ use kevi::cryptography::primitives::decrypt_vault;
 use kevi::vault::models::VaultEntry;
 use kevi::vault::persistence::save_vault_file;
 use secrecy::SecretString;
-use std::{fs, slice};
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::{fs, slice};
 use tempfile::tempdir;
 
 fn bp(path: &Path, n: usize) -> PathBuf {
