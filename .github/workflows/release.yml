@@ -72,16 +72,20 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          : > SHA256SUMS.txt
+          
+          CHECKSUM_FILE="SHA256SUMS-${{ matrix.os }}.txt"
+          : > "$CHECKSUM_FILE"
           for f in *.tar.gz *.zip sbom.json; do
             if [[ -f "$f" ]]; then
               if command -v shasum >/dev/null 2>&1; then
-                shasum -a 256 "$f" >> SHA256SUMS.txt
+                shasum -a 256 "$f" >> "$CHECKSUM_FILE"
               else
-                sha256sum "$f" >> SHA256SUMS.txt
+                sha256sum "$f" >> "$CHECKSUM_FILE"
               fi
             fi
           done
+          
+          echo "checksum_file=$CHECKSUM_FILE" >> $GITHUB_OUTPUT
 
       - name: Optional signing (minisign)
         if: env.MINISIGN_SECRET_KEY && runner.os == 'Linux'
@@ -97,14 +101,14 @@ jobs:
           done
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
-          name: ${{ steps.prep.outputs.archive }}-${{ runner.os }}
+          name: artifacts-${{ matrix.os }}
           path: |
             *.tar.gz
             *.zip
             sbom.json
-            SHA256SUMS.txt
+            SHA256SUMS-*.txt
 
   create-release:
     needs: build-release
@@ -113,7 +117,7 @@ jobs:
       contents: write
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           path: dist
 
