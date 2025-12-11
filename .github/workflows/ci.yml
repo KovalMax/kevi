@@ -65,7 +65,7 @@ jobs:
     name: Security audit
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       checks: write
       issues: write
     steps:
