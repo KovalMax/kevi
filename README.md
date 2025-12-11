@@ -1,3 +1,5 @@
+![ci workflow](https://github.com/KovalMax/kevi/actions/workflows/ci.yml/badge.svg)
+
 Kevi — encrypted CLI vault and TUI password manager
 ===================================================
 

@@ -65,8 +65,7 @@ jobs:
       - name: Generate SBOM (CycloneDX)
         if: runner.os == 'Linux'
         run: |
-          cargo cyclonedx --format json
-          mv bom.json sbom.json
+          cargo cyclonedx --format json --override-filename sbom
 
       - name: Checksums
         shell: bash
