@@ -21,7 +21,7 @@ fn service_add_and_load_round_trip() {
 
     // Initially empty
     let initial = service.load().expect("load ok");
-    assert!(initial.is_empty());
+    assert!(initial.entries.is_empty());
 
     // Add entry
     let entry = VaultEntry {
@@ -34,10 +34,10 @@ fn service_add_and_load_round_trip() {
 
     // Load and verify
     let loaded = service.load().expect("reload ok");
-    assert_eq!(loaded.len(), 1);
-    assert_eq!(loaded[0].label, "svc_label");
+    assert_eq!(loaded.entries.len(), 1);
+    assert_eq!(loaded.entries[0].label, "svc_label");
 
-    // File should be encrypted with KEVI header
+    // File should be encrypted with a KEVI header
     let bytes = std::fs::read(&path).unwrap();
     assert!(bytes.starts_with(b"KEVI"));
 }
@@ -75,6 +75,6 @@ fn service_remove_entry() {
     let removed = service.remove_entry("a").unwrap();
     assert!(removed);
     let after = service.load().unwrap();
-    assert_eq!(after.len(), 1);
-    assert_eq!(after[0].label, "b");
+    assert_eq!(after.entries.len(), 1);
+    assert_eq!(after.entries[0].label, "b");
 }

@@ -3,7 +3,7 @@ use secrecy::SecretString;
 use std::process::Command;
 use tempfile::tempdir;
 
-use kevi::vault::models::VaultEntry;
+use kevi::vault::models::{VaultData, VaultEntry};
 use kevi::vault::persistence::save_vault_file;
 
 #[test]
@@ -13,26 +13,29 @@ fn list_filters_with_query_and_emits_json() {
     let pw = "pw";
 
     // Seed vault
-    let entries = vec![
-        VaultEntry {
-            label: "alpha".into(),
-            username: Some(SecretString::new("alice".into())),
-            password: SecretString::new("a".into()),
-            notes: None,
-        },
-        VaultEntry {
-            label: "beta".into(),
-            username: Some(SecretString::new("bob".into())),
-            password: SecretString::new("b".into()),
-            notes: None,
-        },
-        VaultEntry {
-            label: "gamma".into(),
-            username: None,
-            password: SecretString::new("c".into()),
-            notes: None,
-        },
-    ];
+    let entries = VaultData {
+        entries: vec![
+            VaultEntry {
+                label: "alpha".into(),
+                username: Some(SecretString::new("alice".into())),
+                password: SecretString::new("a".into()),
+                notes: None,
+            },
+            VaultEntry {
+                label: "beta".into(),
+                username: Some(SecretString::new("bob".into())),
+                password: SecretString::new("b".into()),
+                notes: None,
+            },
+            VaultEntry {
+                label: "gamma".into(),
+                username: None,
+                password: SecretString::new("c".into()),
+                notes: None,
+            },
+        ],
+        otps: vec![],
+    };
     save_vault_file(&entries, &path, pw).expect("seed vault");
 
     // Filter: only the beta should appear

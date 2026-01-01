@@ -19,7 +19,7 @@ fn dk_session_write_read_and_expire() {
     let vault_path = dir.path().join("vault.ron");
     let sess_path = dk_session_file_for(&vault_path);
 
-    // Build a synthetic header to compute fingerprint
+    // Build a synthetic header to compute the fingerprint
     let (m, t, p) = default_params();
     let salt = [0u8; 16];
     let hdr = KeviHeader {

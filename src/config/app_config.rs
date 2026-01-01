@@ -179,7 +179,7 @@ pub fn load_file_config_with_path() -> (PathBuf, FileConfig) {
     (path, cfg)
 }
 
-pub fn save_file_config(path: &PathBuf, cfg: &FileConfig) -> std::io::Result<()> {
+pub async fn save_file_config(path: &PathBuf, cfg: &FileConfig) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }

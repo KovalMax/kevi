@@ -1,6 +1,6 @@
 use kevi::config::app_config::Config;
 use kevi::vault::handlers::Vault;
-use kevi::vault::models::VaultEntry;
+use kevi::vault::models::{VaultData, VaultEntry};
 use kevi::vault::persistence::save_vault_file;
 use secrecy::SecretString;
 use tempfile::tempdir;
@@ -12,12 +12,15 @@ async fn vault_handle_header_async_ok() {
     let pw = "pw";
 
     // Seed minimal encrypted vault
-    let entries: Vec<VaultEntry> = vec![VaultEntry {
-        label: "x".into(),
-        username: Some(SecretString::new("u".into())),
-        password: SecretString::new("p".into()),
-        notes: None,
-    }];
+    let entries = VaultData {
+        entries: vec![VaultEntry {
+            label: "x".into(),
+            username: Some(SecretString::new("u".into())),
+            password: SecretString::new("p".into()),
+            notes: None,
+        }],
+        otps: vec![],
+    };
     save_vault_file(&entries, &path, pw).expect("seed vault");
 
     // Run async header handler
@@ -34,20 +37,23 @@ async fn vault_handle_list_async_ok() {
     let pw = "pw";
 
     // Seed with two entries
-    let entries: Vec<VaultEntry> = vec![
-        VaultEntry {
-            label: "alpha".into(),
-            username: None,
-            password: SecretString::new("a".into()),
-            notes: None,
-        },
-        VaultEntry {
-            label: "beta".into(),
-            username: Some(SecretString::new("b".into())),
-            password: SecretString::new("b".into()),
-            notes: None,
-        },
-    ];
+    let entries = VaultData {
+        entries: vec![
+            VaultEntry {
+                label: "alpha".into(),
+                username: None,
+                password: SecretString::new("a".into()),
+                notes: None,
+            },
+            VaultEntry {
+                label: "beta".into(),
+                username: Some(SecretString::new("b".into())),
+                password: SecretString::new("b".into()),
+                notes: None,
+            },
+        ],
+        otps: vec![],
+    };
     save_vault_file(&entries, &path, pw).expect("seed vault");
 
     // Provide password via env to avoid prompt

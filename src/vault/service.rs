@@ -3,7 +3,7 @@ use crate::cryptography::primitives::{
     decrypt_vault_with_key, default_params, encrypt_vault_with_key, parse_kevi_header, KEY_LEN,
     SALT_LEN,
 };
-use crate::vault::models::VaultEntry;
+use crate::vault::models::{VaultData, VaultEntry};
 use crate::vault::ports::{ByteStore, HeaderParams, KeyResolver, VaultCodec};
 use anyhow::{Context, Result};
 use ring::rand::{SecureRandom, SystemRandom};
@@ -30,10 +30,10 @@ impl VaultService {
         }
     }
 
-    pub fn load(&self) -> Result<Vec<VaultEntry>> {
+    pub fn load(&self) -> Result<VaultData> {
         let bytes = self.store.read()?;
         if bytes.is_empty() {
-            return Ok(Vec::new());
+            return Ok(VaultData::default());
         }
         if !bytes.starts_with(b"KEVI") {
             anyhow::bail!(
@@ -57,8 +57,8 @@ impl VaultService {
         self.codec.decode(&pt)
     }
 
-    pub fn save(&self, entries: &[VaultEntry]) -> Result<()> {
-        let plain = self.codec.encode(entries)?;
+    pub fn save(&self, data: &VaultData) -> Result<()> {
+        let plain = self.codec.encode(data)?;
         let bytes = self.store.read()?;
         if !bytes.is_empty() {
             // Reuse existing header params and salt, generate new nonce
@@ -105,18 +105,18 @@ impl VaultService {
     }
 
     pub fn add_entry(&self, entry: VaultEntry) -> Result<()> {
-        let mut entries = self.load()?;
-        entries.push(entry);
-        self.save(&entries)
+        let mut data = self.load()?;
+        data.entries.push(entry);
+        self.save(&data)
     }
 
     pub fn remove_entry(&self, label: &str) -> Result<bool> {
-        let mut entries = self.load()?;
-        let before = entries.len();
-        entries.retain(|e| e.label != label);
-        let removed = entries.len() != before;
+        let mut data = self.load()?;
+        let before = data.entries.len();
+        data.entries.retain(|e| e.label != label);
+        let removed = data.entries.len() != before;
         if removed {
-            self.save(&entries)?;
+            self.save(&data)?;
         }
         Ok(removed)
     }
