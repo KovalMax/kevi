@@ -1,11 +1,24 @@
-use crate::cli::clap_models::{Cli, Commands, GetFieldArg, ProfileCommand};
+use crate::cli::clap_models::{
+    Cli, Commands, GetFieldArg, OtpAlgorithmArg, OtpCommand, ProfileCommand,
+};
 use crate::config::app_config::{
     load_file_config_with_path, save_file_config, Config, FileProfileConfig,
 };
+use crate::filesystem::store::FileByteStore;
+use crate::otp::handlers::{
+    OtpAddOptions, OtpGetOptions, OtpHandlers, OtpListOptions, OtpRemoveOptions,
+};
+use crate::otp::models::OtpAlgorithm;
+use crate::session_management::resolver::CachedKeyResolver;
 use crate::tui;
+use crate::vault::codec::RonCodec;
 use crate::vault::handlers::Vault;
+use crate::vault::models::AddOptions;
+use crate::vault::ports::{ByteStore, KeyResolver, VaultCodec};
+use crate::vault::service::VaultService;
 use clap::Parser;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub async fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -68,7 +81,7 @@ pub async fn run() -> anyhow::Result<()> {
         } => {
             let config = Config::create(path.map(PathBuf::from), cli.profile.clone())?;
             let vault = Vault::create(&config);
-            let opts = crate::vault::handlers::AddOptions {
+            let opts = AddOptions {
                 generate,
                 length,
                 no_lower,
@@ -115,14 +128,17 @@ pub async fn run() -> anyhow::Result<()> {
             tui::launch(&config).await?;
         }
         Commands::Profile(cmd) => {
-            handle_profile_commands(cmd)?;
+            handle_profile_commands(cmd).await?;
+        }
+        Commands::Otp(cmd) => {
+            handle_otp_commands(cmd, cli.profile.clone()).await?;
         }
     }
 
     Ok(())
 }
 
-fn handle_profile_commands(cmd: ProfileCommand) -> anyhow::Result<()> {
+async fn handle_profile_commands(cmd: ProfileCommand) -> anyhow::Result<()> {
     let (path, mut cfg) = load_file_config_with_path();
     let profiles = cfg.profiles.get_or_insert_with(Default::default);
 
@@ -199,6 +215,103 @@ fn handle_profile_commands(cmd: ProfileCommand) -> anyhow::Result<()> {
         }
     }
 
-    save_file_config(&path, &cfg)?;
+    save_file_config(&path, &cfg).await?;
     Ok(())
+}
+
+fn map_algo_arg(arg: OtpAlgorithmArg) -> OtpAlgorithm {
+    match arg {
+        OtpAlgorithmArg::Sha1 => OtpAlgorithm::Sha1,
+        OtpAlgorithmArg::Sha256 => OtpAlgorithm::Sha256,
+        OtpAlgorithmArg::Sha512 => OtpAlgorithm::Sha512,
+    }
+}
+
+async fn handle_otp_commands(cmd: OtpCommand, profile: Option<String>) -> anyhow::Result<()> {
+    match cmd {
+        OtpCommand::Add {
+            name,
+            secret,
+            from_uri,
+            issuer,
+            username,
+            digits,
+            period,
+            algorithm,
+            notes,
+            on_duplicate_override,
+            path,
+        } => {
+            let (config, service) =
+                create_config_and_vault_service(path.map(PathBuf::from), profile.clone())?;
+            let handlers = OtpHandlers::create(&config, service);
+            let opts = OtpAddOptions {
+                name,
+                secret,
+                from_uri,
+                issuer,
+                username,
+                digits,
+                period,
+                algorithm: map_algo_arg(algorithm),
+                notes,
+                on_duplicate_override,
+            };
+            handlers.handle_add(&opts).await
+        }
+        OtpCommand::Get {
+            name,
+            path,
+            no_copy,
+            echo,
+            at,
+            once,
+            json,
+        } => {
+            let (config, service) =
+                create_config_and_vault_service(path.map(PathBuf::from), profile.clone())?;
+            let handlers = OtpHandlers::create(&config, service);
+            let opts = OtpGetOptions {
+                name,
+                no_copy,
+                echo,
+                at,
+                once,
+                json,
+            };
+            handlers.handle_get(opts).await
+        }
+        OtpCommand::List { path, query, json } => {
+            let (config, service) =
+                create_config_and_vault_service(path.map(PathBuf::from), profile.clone())?;
+            let handlers = OtpHandlers::create(&config, service);
+            let opts = OtpListOptions { query, json };
+            handlers.handle_list(opts).await
+        }
+        OtpCommand::Rm { name, path, yes } => {
+            let (config, service) =
+                create_config_and_vault_service(path.map(PathBuf::from), profile.clone())?;
+            let handlers = OtpHandlers::create(&config, service);
+            let opts = OtpRemoveOptions { name, yes };
+            handlers.handle_remove(opts).await
+        }
+    }
+}
+
+fn create_config_and_vault_service(
+    path: Option<PathBuf>,
+    profile: Option<String>,
+) -> anyhow::Result<(Config, Arc<VaultService>)> {
+    let config = Config::create(path, profile.clone())?;
+    let backups = config.backups.unwrap_or(2);
+    let store: Arc<dyn ByteStore> = Arc::new(FileByteStore::new_with_backups(
+        config.vault_path.clone(),
+        backups,
+    ));
+    let codec: Arc<dyn VaultCodec> = Arc::new(RonCodec);
+    let key_resolver: Arc<dyn KeyResolver> =
+        Arc::new(CachedKeyResolver::new(config.vault_path.clone()));
+    let service = Arc::new(VaultService::new(store, codec, key_resolver));
+
+    Ok((config, service))
 }

@@ -3,7 +3,7 @@ use secrecy::ExposeSecret;
 use std::process::Command;
 use tempfile::tempdir;
 
-use kevi::vault::models::VaultEntry;
+use kevi::vault::models::VaultData;
 use kevi::vault::persistence::load_vault_file;
 
 #[test]
@@ -30,8 +30,9 @@ fn cli_add_generate_char_mode_creates_expected_password() {
     cmd.assert().success();
 
     // Load vault and verify
-    let entries: Vec<VaultEntry> = load_vault_file(&path, pw).expect("load vault");
-    let e = entries
+    let vault: VaultData = load_vault_file(&path, pw).expect("load vault");
+    let e = vault
+        .entries
         .iter()
         .find(|e| e.label == "gen1")
         .expect("entry present");
@@ -70,8 +71,9 @@ fn cli_add_generate_passphrase_mode_produces_words() {
     cmd.assert().success();
 
     // Load vault and verify
-    let entries: Vec<VaultEntry> = load_vault_file(&path, pw).expect("load vault");
-    let e = entries
+    let data: VaultData = load_vault_file(&path, pw).expect("load vault");
+    let e = data
+        .entries
         .iter()
         .find(|e| e.label == "phrase1")
         .expect("entry present");

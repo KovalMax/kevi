@@ -1,7 +1,7 @@
 use kevi::filesystem::store::FileByteStore;
 use kevi::session_management::resolver::CachedKeyResolver;
 use kevi::vault::codec::RonCodec;
-use kevi::vault::models::VaultEntry;
+use kevi::vault::models::{VaultData, VaultEntry};
 use kevi::vault::persistence::load_vault_file;
 use kevi::vault::service::VaultService;
 use secrecy::SecretString;
@@ -15,12 +15,15 @@ fn store_rejects_plaintext_vault_files() {
     let path = td.path().join("vault.ron");
 
     // Write a plaintext RON file (no KEVI header)
-    let entries = vec![VaultEntry {
-        label: "plain".into(),
-        username: None,
-        password: SecretString::new("pw".into()),
-        notes: None,
-    }];
+    let entries = VaultData {
+        entries: vec![VaultEntry {
+            label: "plain".into(),
+            username: None,
+            password: SecretString::new("pw".into()),
+            notes: None,
+        }],
+        otps: vec![],
+    };
     let ron = ron::to_string(&entries).unwrap();
     fs::write(&path, ron).unwrap();
 
@@ -37,12 +40,15 @@ fn service_rejects_plaintext_vault_files() {
     let path = td.path().join("vault.ron");
 
     // Write a plaintext RON file (no KEVI header)
-    let entries = vec![VaultEntry {
-        label: "plain".into(),
-        username: None,
-        password: SecretString::new("pw".into()),
-        notes: None,
-    }];
+    let entries = VaultData {
+        entries: vec![VaultEntry {
+            label: "plain".into(),
+            username: None,
+            password: SecretString::new("pw".into()),
+            notes: None,
+        }],
+        otps: vec![],
+    };
     let ron = ron::to_string(&entries).unwrap();
     fs::write(&path, ron).unwrap();
 

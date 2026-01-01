@@ -4,7 +4,7 @@ use secrecy::SecretString;
 use std::process::Command;
 use tempfile::tempdir;
 
-use kevi::vault::models::VaultEntry;
+use kevi::vault::models::{VaultData, VaultEntry};
 use kevi::vault::persistence::save_vault_file;
 
 #[test]
@@ -14,13 +14,16 @@ fn get_warns_in_ssh_like_environment() {
     let pw = "pw";
 
     // Seed vault with one item
-    let entry = VaultEntry {
-        label: "srv".into(),
-        username: Some(SecretString::new("u".into())),
-        password: SecretString::new("p".into()),
-        notes: None,
+    let entry = VaultData {
+        entries: vec![VaultEntry {
+            label: "srv".into(),
+            username: Some(SecretString::new("u".into())),
+            password: SecretString::new("p".into()),
+            notes: None,
+        }],
+        otps: vec![],
     };
-    save_vault_file(&[entry], &path, pw).expect("seed vault");
+    save_vault_file(&entry, &path, pw).expect("seed vault");
 
     // Simulate SSH session; do not use --no-copy to exercise a clipboard path
     let mut cmd = Command::cargo_bin("kevi").unwrap();

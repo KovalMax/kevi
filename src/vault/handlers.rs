@@ -16,7 +16,7 @@ use crate::session_management::resolver::{
 };
 use crate::session_management::session::clear;
 use crate::vault::codec::RonCodec;
-use crate::vault::models::VaultEntry;
+use crate::vault::models::{AddOptions, VaultData, VaultEntry};
 use crate::vault::persistence::save_vault_file;
 use crate::vault::ports::{ByteStore, GenPolicy, KeyResolver, PasswordGenerator, Rng, VaultCodec};
 use crate::vault::service::VaultService;
@@ -121,7 +121,7 @@ impl<'a> Vault<'a> {
                 .await
                 .map_err(|_| anyhow!("task join error"))??
         };
-        let entry = match vault.iter().find(|e| e.label == key) {
+        let entry = match vault.entries.iter().find(|e| e.label == key) {
             Some(e) => e,
             None => {
                 println!("❌ No entry found with key '{key}'");
@@ -186,11 +186,11 @@ impl<'a> Vault<'a> {
 
     pub async fn handle_show(&self, key: &str, reveal_password: bool) -> Result<()> {
         let svc = self.service.clone();
-        let entries = spawn_blocking(move || svc.load())
+        let data = spawn_blocking(move || svc.load())
             .await
             .map_err(|_| anyhow!("task join error"))??;
 
-        if let Some(entry) = entries.iter().find(|e| e.label == key) {
+        if let Some(entry) = data.entries.iter().find(|e| e.label == key) {
             println!("Label:    {}", entry.label);
             if let Some(user) = &entry.username {
                 println!("Username: {}", user.expose_secret());
@@ -227,7 +227,7 @@ impl<'a> Vault<'a> {
         } else {
             Text::new("Label (key)").prompt()?
         };
-        if vault.iter().any(|e| e.label == label) {
+        if vault.entries.iter().any(|e| e.label == label) {
             println!("❌ Entry with label '{label}' already exists.");
             return Ok(());
         }
@@ -308,7 +308,7 @@ impl<'a> Vault<'a> {
             notes: if notes.is_empty() { None } else { Some(notes) },
         };
 
-        vault.push(entry);
+        vault.entries.push(entry);
         let svc_save = self.service.clone();
         spawn_blocking(move || svc_save.save(&vault))
             .await
@@ -321,10 +321,10 @@ impl<'a> Vault<'a> {
     pub async fn handle_rm(&self, key: &str, yes: bool) -> Result<()> {
         // Load to check existence and optionally confirm
         let svc_load = self.service.clone();
-        let entries = spawn_blocking(move || svc_load.load())
+        let data = spawn_blocking(move || svc_load.load())
             .await
             .map_err(|_| anyhow!("task join error"))??;
-        if !entries.iter().any(|e| e.label == key) {
+        if !data.entries.iter().any(|e| e.label == key) {
             println!("❌ No entry found with key '{key}'");
             return Ok(());
         }
@@ -359,19 +359,21 @@ impl<'a> Vault<'a> {
         json_mode: bool,
     ) -> Result<()> {
         let svc = self.service.clone();
-        let mut entries = spawn_blocking(move || svc.load())
+        let mut data = spawn_blocking(move || svc.load())
             .await
             .map_err(|_| anyhow!("task join error"))??;
 
-        // Filter by query (case-insensitive) on label
+        // Filter by query (case-insensitive) on a label
         if let Some(q) = query {
             let ql = q.to_lowercase();
-            entries.retain(|e| e.label.to_lowercase().contains(&ql));
+            data.entries
+                .retain(|e| e.label.to_lowercase().contains(&ql));
         }
 
         if json_mode {
             // Build JSON array without secrets
-            let items: Vec<serde_json::Value> = entries
+            let items: Vec<serde_json::Value> = data
+                .entries
                 .iter()
                 .map(|e| {
                     if show_users {
@@ -389,11 +391,11 @@ impl<'a> Vault<'a> {
             return Ok(());
         }
 
-        if entries.is_empty() {
+        if data.entries.is_empty() {
             println!("(empty)");
             return Ok(());
         }
-        for e in entries {
+        for e in data.entries {
             if show_users {
                 let user = e
                     .username
@@ -438,7 +440,10 @@ impl<'a> Vault<'a> {
         };
 
         // Save an empty vault
-        let empty: Vec<VaultEntry> = Vec::new();
+        let empty = VaultData {
+            entries: Vec::new(),
+            otps: Vec::new(),
+        };
         let path_clone = target_path.clone();
         let master_clone = master.clone();
         spawn_blocking(move || save_vault_file(&empty, &path_clone, &master_clone))
@@ -504,22 +509,4 @@ impl<'a> Vault<'a> {
         println!("🔒 Locked (derived-key session cleared).");
         Ok(())
     }
-}
-
-// Options for the add command, constructed by CLI layer
-#[derive(Debug, Clone)]
-pub struct AddOptions {
-    pub generate: bool,
-    pub length: Option<u16>,
-    pub no_lower: bool,
-    pub no_upper: bool,
-    pub no_digits: bool,
-    pub no_symbols: bool,
-    pub allow_ambiguous: bool,
-    pub passphrase: bool,
-    pub words: Option<u16>,
-    pub sep: Option<String>,
-    pub label: Option<String>,
-    pub user: Option<String>,
-    pub notes: Option<String>,
 }

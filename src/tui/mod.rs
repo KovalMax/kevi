@@ -52,7 +52,7 @@ pub async fn launch(config: &Config) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let ttl_secs = ttl_seconds(config, None);
-    let mut app = App::new(entries);
+    let mut app = App::new(entries.entries);
     let mut last_tick = Instant::now();
     let tick_rate = Duration::from_millis(200);
 
@@ -221,18 +221,19 @@ pub async fn launch(config: &Config) -> Result<()> {
                                                 }).await.map_err(|_| anyhow!("task join error"))?;
                                             } else {
                                                 spawn_blocking(move || {
-                                                    let mut vault_entries = svc.load()?;
-                                                    if let Some(pos) = vault_entries
+                                                    let mut vault = svc.load()?;
+                                                    if let Some(pos) = vault
+                                                        .entries
                                                         .iter()
                                                         .position(|e| e.label == original_label)
                                                     {
-                                                        vault_entries[pos].label = label_for_save;
-                                                        vault_entries[pos].username = user_opt
+                                                        vault.entries[pos].label = label_for_save;
+                                                        vault.entries[pos].username = user_opt
                                                             .map(|u| SecretString::new(u.into()));
-                                                        vault_entries[pos].password =
+                                                        vault.entries[pos].password =
                                                             SecretString::new(form_pw.into());
-                                                        vault_entries[pos].notes = notes_opt;
-                                                        svc.save(&vault_entries)
+                                                        vault.entries[pos].notes = notes_opt;
+                                                        svc.save(&vault)
                                                     } else {
                                                         Ok(())
                                                     }
@@ -246,7 +247,7 @@ pub async fn launch(config: &Config) -> Result<()> {
                                                 spawn_blocking(move || svc_reload.load())
                                                     .await
                                                     .map_err(|_| anyhow!("task join error"))??;
-                                            app.replace_entries(new_entries);
+                                            app.replace_entries(new_entries.entries);
                                             app.view = View::List;
                                             app.toast("Saved".to_string());
                                         }
@@ -275,7 +276,7 @@ pub async fn launch(config: &Config) -> Result<()> {
                                                 .await
                                                 .map_err(|_| anyhow!("task join error"))
                                         {
-                                            app.replace_entries(ents);
+                                            app.replace_entries(ents.entries);
                                         }
                                         app.view = View::List;
                                         app.toast("Deleted".to_string());
