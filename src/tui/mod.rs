@@ -13,21 +13,22 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::task::spawn_blocking;
 
-use crate::filesystem::clipboard::{copy_with_ttl, ttl_seconds, SystemClipboardEngine};
-use crate::filesystem::store::FileByteStore;
-use crate::session_management::resolver::CachedKeyResolver;
-use crate::vault::codec::RonCodec;
-use crate::vault::handlers::GetField;
-use crate::vault::ports::PasswordGenerator;
-use crate::vault::ports::{ByteStore, KeyResolver, VaultCodec};
-use crate::vault::service::VaultService;
-use secrecy::SecretString;
-
 use self::app::{App, Mode, View};
 use self::views::confirm::render_confirm;
 use self::views::details::render_details;
 use self::views::form::render_form;
 use self::views::list::render_list;
+use crate::cryptography::generator::DefaultPasswordGenerator;
+use crate::filesystem::clipboard::{copy_with_ttl, ttl_seconds, SystemClipboardEngine};
+use crate::filesystem::store::FileByteStore;
+use crate::session_management::resolver::CachedKeyResolver;
+use crate::vault::codec::RonCodec;
+use crate::vault::handlers::GetField;
+use crate::vault::models::VaultEntry;
+use crate::vault::ports::{ByteStore, KeyResolver, VaultCodec};
+use crate::vault::ports::{GenPolicy, PasswordGenerator};
+use crate::vault::service::VaultService;
+use secrecy::SecretString;
 
 pub async fn launch(config: &Config) -> Result<()> {
     // Compose service (same defaults as CLI flows)
@@ -205,13 +206,13 @@ pub async fn launch(config: &Config) -> Result<()> {
                                                 let _ = spawn_blocking(move || {
                                                     let pw_final = if form_pw.is_empty() {
                                                         // Generate password via default generator
-                                                        let gen2 = crate::cryptography::generator::DefaultPasswordGenerator::new(Arc::new(crate::cryptography::generator::SystemRng));
-                                                        gen2.generate(&crate::vault::ports::GenPolicy::default())?
+                                                        let gen2 = DefaultPasswordGenerator::new(Arc::new(crate::cryptography::generator::SystemRng));
+                                                        gen2.generate(&GenPolicy::default())?
                                                     } else {
                                                         form_pw
                                                     };
 
-                                                    let entry_real = crate::vault::models::VaultEntry {
+                                                    let entry_real = VaultEntry {
                                                         label: label_for_save,
                                                         username: user_opt.map(|u| SecretString::new(u.into())),
                                                         password: SecretString::new(pw_final.into()),

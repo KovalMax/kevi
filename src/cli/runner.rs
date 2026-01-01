@@ -12,7 +12,7 @@ use crate::otp::models::OtpAlgorithm;
 use crate::session_management::resolver::CachedKeyResolver;
 use crate::tui;
 use crate::vault::codec::RonCodec;
-use crate::vault::handlers::Vault;
+use crate::vault::handlers::{GetField, Vault};
 use crate::vault::models::AddOptions;
 use crate::vault::ports::{ByteStore, KeyResolver, VaultCodec};
 use crate::vault::service::VaultService;
@@ -55,9 +55,9 @@ pub async fn run() -> anyhow::Result<()> {
             let config = Config::create(path.map(PathBuf::from), cli.profile.clone())?;
             let vault = Vault::create(&config);
             let field_core = match field {
-                GetFieldArg::Password => crate::vault::handlers::GetField::Password,
-                GetFieldArg::User => crate::vault::handlers::GetField::User,
-                GetFieldArg::Notes => crate::vault::handlers::GetField::Notes,
+                GetFieldArg::Password => GetField::Password,
+                GetFieldArg::User => GetField::User,
+                GetFieldArg::Notes => GetField::Notes,
             };
             vault
                 .handle_get(&key, field_core, no_copy, ttl, echo, once)

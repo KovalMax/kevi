@@ -1,3 +1,5 @@
+use crate::cryptography::types::secret_string;
+use crate::cryptography::types::secret_string_option;
 use crate::otp::models::OtpEntry;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
@@ -5,9 +7,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VaultEntry {
     pub label: String,
-    #[serde(default, with = "crate::cryptography::types::secret_string_option")]
+    #[serde(default, with = "secret_string_option")]
     pub username: Option<SecretString>,
-    #[serde(with = "crate::cryptography::types::secret_string")]
+    #[serde(with = "secret_string")]
     pub password: SecretString,
     pub notes: Option<String>,
 }

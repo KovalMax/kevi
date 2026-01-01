@@ -3,7 +3,7 @@ use crate::cryptography::primitives::{
     decrypt_vault_with_key, default_params, encrypt_vault_with_key, parse_kevi_header, KEY_LEN,
     SALT_LEN,
 };
-use crate::vault::models::VaultData;
+use crate::vault::models::{VaultData, VaultEntry};
 use crate::vault::ports::{ByteStore, HeaderParams, KeyResolver, VaultCodec};
 use anyhow::{Context, Result};
 use ring::rand::{SecureRandom, SystemRandom};
@@ -104,7 +104,7 @@ impl VaultService {
         }
     }
 
-    pub fn add_entry(&self, entry: crate::vault::models::VaultEntry) -> Result<()> {
+    pub fn add_entry(&self, entry: VaultEntry) -> Result<()> {
         let mut data = self.load()?;
         data.entries.push(entry);
         self.save(&data)

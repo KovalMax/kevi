@@ -7,8 +7,9 @@ use crate::cryptography::primitives::{
     derive_key_argon2id, header_fingerprint_excluding_nonce, parse_kevi_header, AEAD_AES256GCM,
     KDF_ARGON2ID,
 };
+use crate::cryptography::wordlist::WORDS;
 use crate::filesystem::clipboard::{
-    copy_with_ttl, environment_warning, ttl_seconds, SystemClipboardEngine,
+    copy_with_ttl, environment_warning, ttl_seconds, ClipboardEngine, SystemClipboardEngine,
 };
 use crate::filesystem::store::FileByteStore;
 use crate::session_management::resolver::{
@@ -167,8 +168,7 @@ impl<'a> Vault<'a> {
         }
         match SystemClipboardEngine::new() {
             Ok(engine_impl) => {
-                let engine =
-                    Arc::new(engine_impl) as Arc<dyn crate::filesystem::clipboard::ClipboardEngine>;
+                let engine = Arc::new(engine_impl) as Arc<dyn ClipboardEngine>;
                 let secret = SecretString::new(value.into());
                 if let Err(e) = copy_with_ttl(engine, &secret, ttl) {
                     eprintln!("⚠️ Failed to copy to clipboard: {e}");
@@ -283,7 +283,7 @@ impl<'a> Vault<'a> {
             let generated = gen.generate(&policy)?;
             // Show a basic strength hint (interactive UX), without echoing the secret
             let bits = if policy.passphrase {
-                estimate_bits_passphrase(policy.words, crate::cryptography::wordlist::WORDS.len())
+                estimate_bits_passphrase(policy.words, WORDS.len())
             } else {
                 estimate_bits_char_mode(&policy)
             };
