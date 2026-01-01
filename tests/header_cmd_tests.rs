@@ -1,5 +1,5 @@
 use assert_cmd::prelude::*;
-use kevi::vault::models::VaultEntry;
+use kevi::vault::models::{VaultData, VaultEntry};
 use kevi::vault::persistence::save_vault_file;
 use predicates::prelude::*;
 use secrecy::SecretString;
@@ -23,12 +23,15 @@ fn header_on_valid_vault_prints_fields() {
     let path = dir.path().join("vault.ron");
     let pw = "pw";
     // Save a simple encrypted vault (empty entries also fine)
-    let entries: Vec<VaultEntry> = vec![VaultEntry {
-        label: "lbl".into(),
-        username: Some(SecretString::new("u".into())),
-        password: SecretString::new("p".into()),
-        notes: None,
-    }];
+    let entries = VaultData {
+        entries: vec![VaultEntry {
+            label: "lbl".into(),
+            username: Some(SecretString::new("u".into())),
+            password: SecretString::new("p".into()),
+            notes: None,
+        }],
+        otps: vec![],
+    };
     save_vault_file(&entries, &path, pw).expect("save vault");
 
     run_header(&path)

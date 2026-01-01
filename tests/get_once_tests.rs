@@ -5,7 +5,7 @@ use std::process::Command;
 use tempfile::tempdir;
 
 use kevi::session_management::resolver::dk_session_file_for;
-use kevi::vault::models::VaultEntry;
+use kevi::vault::models::{VaultData, VaultEntry};
 use kevi::vault::persistence::save_vault_file;
 
 #[test]
@@ -15,13 +15,16 @@ fn get_once_bypasses_session_cache_and_does_not_create_it() {
     let pw = "pw";
 
     // Seed vault with one item
-    let entry = VaultEntry {
-        label: "k".into(),
-        username: Some(SecretString::new("u".into())),
-        password: SecretString::new("s3cr3t".into()),
-        notes: None,
+    let entry = VaultData {
+        entries: vec![VaultEntry {
+            label: "k".into(),
+            username: Some(SecretString::new("u".into())),
+            password: SecretString::new("s3cr3t".into()),
+            notes: None,
+        }],
+        otps: vec![],
     };
-    save_vault_file(&[entry], &path, pw).expect("seed vault");
+    save_vault_file(&entry, &path, pw).expect("seed vault");
 
     // Ensure no derived-key session exists
     let dk_path = dk_session_file_for(&path);

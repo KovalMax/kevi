@@ -1,5 +1,6 @@
 use crate::cryptography::primitives::{
-    derive_key_argon2id, header_fingerprint_excluding_nonce, KeviHeader, KEY_LEN,
+    derive_key_argon2id, header_fingerprint_excluding_nonce, KeviHeader, AEAD_AES256GCM,
+    HEADER_VERSION, KDF_ARGON2ID, KEY_LEN, NONCE_LEN,
 };
 use crate::session_management::session::{load, save};
 use crate::vault::ports::{DerivedKey, HeaderParams, KeyResolver};
@@ -110,14 +111,14 @@ impl KeyResolver for CachedKeyResolver {
 
         // Also cache it
         let hdr = KeviHeader {
-            version: crate::cryptography::primitives::HEADER_VERSION,
-            kdf_id: crate::cryptography::primitives::KDF_ARGON2ID,
-            aead_id: crate::cryptography::primitives::AEAD_AES256GCM,
+            version: HEADER_VERSION,
+            kdf_id: KDF_ARGON2ID,
+            aead_id: AEAD_AES256GCM,
             m_cost_kib: params.m_cost_kib,
             t_cost: params.t_cost,
             p_lanes: params.p_lanes,
             salt,
-            nonce: [0u8; crate::cryptography::primitives::NONCE_LEN],
+            nonce: [0u8; NONCE_LEN],
         };
         let fp = header_fingerprint_excluding_nonce(&hdr);
         let ttl_secs = env::var("KEVI_UNLOCK_TTL")

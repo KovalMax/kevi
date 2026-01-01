@@ -4,7 +4,7 @@ use secrecy::SecretString;
 use std::process::Command;
 use tempfile::tempdir;
 
-use kevi::vault::models::VaultEntry;
+use kevi::vault::models::{VaultData, VaultEntry};
 use kevi::vault::persistence::save_vault_file;
 
 #[test]
@@ -14,20 +14,23 @@ fn list_shows_labels_by_default_and_user_when_requested() {
     let pw = "pw";
 
     // Seed vault
-    let entries = vec![
-        VaultEntry {
-            label: "alpha".into(),
-            username: Some(SecretString::new("alice".into())),
-            password: SecretString::new("aaa".into()),
-            notes: None,
-        },
-        VaultEntry {
-            label: "beta".into(),
-            username: None,
-            password: SecretString::new("bbb".into()),
-            notes: None,
-        },
-    ];
+    let entries = VaultData {
+        entries: vec![
+            VaultEntry {
+                label: "alpha".into(),
+                username: Some(SecretString::new("alice".into())),
+                password: SecretString::new("aaa".into()),
+                notes: None,
+            },
+            VaultEntry {
+                label: "beta".into(),
+                username: None,
+                password: SecretString::new("bbb".into()),
+                notes: None,
+            },
+        ],
+        otps: vec![],
+    };
     save_vault_file(&entries, &path, pw).expect("seed vault");
 
     // By default, only labels

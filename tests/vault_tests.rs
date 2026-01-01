@@ -1,10 +1,10 @@
 use kevi::config::app_config::Config;
 use kevi::vault::handlers::{GetField, Vault};
-use kevi::vault::models::VaultEntry;
+use kevi::vault::models::{VaultData, VaultEntry};
 use kevi::vault::persistence::{load_vault_file, save_vault_file};
 use secrecy::SecretString;
+use std::env;
 use std::path::PathBuf;
-use std::{env, slice};
 use tempfile::tempdir;
 
 fn setup_vault_path(file_name: &str) -> PathBuf {
@@ -16,14 +16,17 @@ fn setup_vault_path(file_name: &str) -> PathBuf {
 async fn test_handle_get_existing_entry() {
     let path = setup_vault_path("vault.ron");
     let pw = "testpw";
-    let entry = VaultEntry {
-        label: "gettest".into(),
-        username: Some(SecretString::new("user".into())),
-        password: SecretString::new("secret".into()),
-        notes: Some("note".into()),
+    let entry = VaultData {
+        entries: vec![VaultEntry {
+            label: "gettest".into(),
+            username: Some(SecretString::new("user".into())),
+            password: SecretString::new("secret".into()),
+            notes: Some("note".into()),
+        }],
+        otps: vec![],
     };
 
-    save_vault_file(slice::from_ref(&entry), &path, pw).unwrap();
+    save_vault_file(&entry, &path, pw).unwrap();
     let config = Config::create(Some(path.clone()), None).unwrap();
     let vault = Vault::create(&config);
     env::set_var("KEVI_PASSWORD", pw);
@@ -37,14 +40,17 @@ async fn test_handle_get_existing_entry() {
 async fn test_handle_rm_existing_entry() {
     let path = setup_vault_path("vault.ron");
     let pw = "testpw";
-    let entry = VaultEntry {
-        label: "rmtest".into(),
-        username: None,
-        password: SecretString::new("pw".into()),
-        notes: None,
+    let entry = VaultData {
+        entries: vec![VaultEntry {
+            label: "rmtest".into(),
+            username: None,
+            password: SecretString::new("pw".into()),
+            notes: None,
+        }],
+        otps: vec![],
     };
 
-    save_vault_file(slice::from_ref(&entry), &path, pw).unwrap();
+    save_vault_file(&entry, &path, pw).unwrap();
     let config = Config::create(Some(path.clone()), None).unwrap();
     let vault = Vault::create(&config);
     env::set_var("KEVI_PASSWORD", pw);
@@ -52,5 +58,5 @@ async fn test_handle_rm_existing_entry() {
     assert!(result.is_ok());
 
     let loaded = load_vault_file(&path, pw).unwrap();
-    assert!(!loaded.iter().any(|e| e.label == "rmtest"));
+    assert!(!loaded.entries.iter().any(|e| e.label == "rmtest"));
 }
