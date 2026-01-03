@@ -35,6 +35,7 @@ jobs:
         run: cargo build --all --verbose
 
       - name: Test
+        if: runner.os != 'Linux'
         run: cargo test --all --verbose
 
       - name: Test with memlock feature (Linux only)
