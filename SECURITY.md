@@ -212,7 +212,7 @@ Kevi integrates with the system clipboard via crates such as
     printed.
   * `--echo` is required to print a secret to stdout.
 * **TTL (time‑to‑live)**:
-  * Kevi uses a configurable TTL after which it will attempt to clear
+  * Kevi uses a configurable TTL, after which it will attempt to clear
     the clipboard or overwrite it with dummy data.
   * The exact reliability of clipboard clearing depends heavily on the
     platform and other applications.
