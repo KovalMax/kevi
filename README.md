@@ -320,6 +320,35 @@ Environment variables can override some of these:
   defaults.
 
 
+TUI usage
+---------
+
+Run:
+
+```bash
+kevi tui [--path <FILE>]
+```
+
+This opens an interactive TUI built on top of the `ratatui` and
+`crossterm` crates. Exact key bindings may evolve, but typical
+behaviors include:
+
+* **Navigation** – use arrow keys, `j/k`, or PageUp/PageDown to move
+  through the list of entries.
+* **Search/filter** – start typing or use a dedicated search key to
+  filter by label.
+* **Copy password** – press `Enter` on a selected entry to copy its
+  password to the clipboard; a short message appears indicating the
+  clipboard TTL.
+* **Copy username** – press `u` to copy the username of the selected
+  entry to the clipboard.
+* **Details view** – open a detailed view of an entry showing label,
+  username, notes, and a masked password. Future versions may support
+  an explicit reveal toggle.
+
+The TUI is designed to avoid printing passwords to the screen by
+default; operations are oriented around copying to the clipboard.
+
 ## Configuration
 ### Kevi reads configuration from:
 1. CLI flags
