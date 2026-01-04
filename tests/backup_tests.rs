@@ -1,5 +1,5 @@
 use kevi::cryptography::primitives::decrypt_vault;
-use kevi::vault::models::VaultEntry;
+use kevi::vault::models::{VaultData, VaultEntry};
 use kevi::vault::persistence::save_vault_file;
 use secrecy::SecretString;
 #[cfg(target_family = "unix")]
@@ -28,7 +28,15 @@ fn rotating_backups_keep_two_versions_and_prune() {
         password: SecretString::new("p1".into()),
         notes: None,
     };
-    save_vault_file(slice::from_ref(&e1), &path, pw).expect("save 1");
+    save_vault_file(
+        &VaultData {
+            entries: slice::from_ref(&e1).to_vec(),
+            otps: vec![],
+        },
+        &path,
+        pw,
+    )
+    .expect("save 1");
 
     // Second content
     let e2 = VaultEntry {
@@ -37,7 +45,15 @@ fn rotating_backups_keep_two_versions_and_prune() {
         password: SecretString::new("p2".into()),
         notes: None,
     };
-    save_vault_file(slice::from_ref(&e2), &path, pw).expect("save 2");
+    save_vault_file(
+        &VaultData {
+            entries: slice::from_ref(&e2).to_vec(),
+            otps: vec![],
+        },
+        &path,
+        pw,
+    )
+    .expect("save 2");
 
     // Third content
     let e3 = VaultEntry {
@@ -46,15 +62,22 @@ fn rotating_backups_keep_two_versions_and_prune() {
         password: SecretString::new("p3".into()),
         notes: None,
     };
-    save_vault_file(slice::from_ref(&e3), &path, pw).expect("save 3");
+    save_vault_file(
+        &VaultData {
+            entries: slice::from_ref(&e3).to_vec(),
+            otps: vec![],
+        },
+        &path,
+        pw,
+    )
+    .expect("save 3");
 
     // Main file should be latest (e3)
     let main_bytes = fs::read(&path).unwrap();
     assert!(main_bytes.starts_with(b"KEVI"), "main must be encrypted");
     let main_plain = decrypt_vault(&main_bytes, pw).expect("decrypt main");
-    let main_entries: Vec<VaultEntry> =
-        ron::from_str(&String::from_utf8(main_plain).unwrap()).unwrap();
-    assert_eq!(main_entries[0].label, "three");
+    let main_data: VaultData = ron::from_str(&String::from_utf8(main_plain).unwrap()).unwrap();
+    assert_eq!(main_data.entries[0].label, "three");
 
     // .1 should be previous (e2), .2 should be first (e1)
     let b1 = bp(&path, 1);
@@ -66,10 +89,10 @@ fn rotating_backups_keep_two_versions_and_prune() {
     assert!(b1_bytes.starts_with(b"KEVI") && b2_bytes.starts_with(b"KEVI"));
     let b1_plain = decrypt_vault(&b1_bytes, pw).unwrap();
     let b2_plain = decrypt_vault(&b2_bytes, pw).unwrap();
-    let b1_entries: Vec<VaultEntry> = ron::from_str(&String::from_utf8(b1_plain).unwrap()).unwrap();
-    let b2_entries: Vec<VaultEntry> = ron::from_str(&String::from_utf8(b2_plain).unwrap()).unwrap();
-    assert_eq!(b1_entries[0].label, "two");
-    assert_eq!(b2_entries[0].label, "one");
+    let b1_data: VaultData = ron::from_str(&String::from_utf8(b1_plain).unwrap()).unwrap();
+    let b2_data: VaultData = ron::from_str(&String::from_utf8(b2_plain).unwrap()).unwrap();
+    assert_eq!(b1_data.entries[0].label, "two");
+    assert_eq!(b2_data.entries[0].label, "one");
 
     // .3 should not exist (pruned)
     let b3 = bp(&path, 3);

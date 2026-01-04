@@ -2,7 +2,7 @@ use anyhow::Result;
 use secrecy::SecretBox;
 
 use crate::cryptography::primitives::KeviHeader;
-use crate::vault::models::VaultEntry;
+use crate::vault::models::VaultData;
 
 // Randomness provider for deterministic testing.
 pub trait Rng: Send + Sync {
@@ -10,8 +10,8 @@ pub trait Rng: Send + Sync {
 }
 
 pub trait VaultCodec: Send + Sync {
-    fn encode(&self, entries: &[VaultEntry]) -> Result<Vec<u8>>;
-    fn decode(&self, data: &[u8]) -> Result<Vec<VaultEntry>>;
+    fn encode(&self, data: &VaultData) -> Result<Vec<u8>>;
+    fn decode(&self, data: &[u8]) -> Result<VaultData>;
 }
 
 pub trait ByteStore: Send + Sync {

@@ -1,5 +1,5 @@
 use assert_cmd::Command;
-use kevi::vault::models::VaultEntry;
+use kevi::vault::models::{VaultData, VaultEntry};
 use kevi::vault::persistence::save_vault_file;
 use secrecy::SecretString;
 use tempfile::tempdir;
@@ -10,12 +10,15 @@ fn show_command_prints_details_masked_by_default() {
     let path = td.path().join("vault.ron");
     let pw = "pw";
 
-    let entries = vec![VaultEntry {
-        label: "mysite".into(),
-        username: Some(SecretString::new("alice".into())),
-        password: SecretString::new("secret123".into()),
-        notes: Some("noteZ".into()),
-    }];
+    let entries = VaultData {
+        entries: vec![VaultEntry {
+            label: "mysite".into(),
+            username: Some(SecretString::new("alice".into())),
+            password: SecretString::new("secret123".into()),
+            notes: Some("noteZ".into()),
+        }],
+        otps: vec![],
+    };
     save_vault_file(&entries, &path, pw).unwrap();
 
     let mut cmd = Command::cargo_bin("kevi").unwrap();
@@ -41,12 +44,15 @@ fn show_command_reveals_password_with_flag() {
     let path = td.path().join("vault.ron");
     let pw = "pw";
 
-    let entries = vec![VaultEntry {
-        label: "mysite".into(),
-        username: Some(SecretString::new("alice".into())),
-        password: SecretString::new("secret123".into()),
-        notes: Some("noteZ".into()),
-    }];
+    let entries = VaultData {
+        entries: vec![VaultEntry {
+            label: "mysite".into(),
+            username: Some(SecretString::new("alice".into())),
+            password: SecretString::new("secret123".into()),
+            notes: Some("noteZ".into()),
+        }],
+        otps: vec![],
+    };
     save_vault_file(&entries, &path, pw).unwrap();
 
     let mut cmd = Command::cargo_bin("kevi").unwrap();

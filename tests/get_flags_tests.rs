@@ -4,7 +4,7 @@ use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
 
-use kevi::vault::models::VaultEntry;
+use kevi::vault::models::{VaultData, VaultEntry};
 use kevi::vault::persistence::save_vault_file;
 use secrecy::SecretString;
 
@@ -18,13 +18,16 @@ fn seed_vault(home: &std::path::Path) {
         let _ = fs::create_dir_all(parent);
     }
     let pw = "pw";
-    let entry = VaultEntry {
-        label: "label1".into(),
-        username: Some(SecretString::new("user123".into())),
-        password: SecretString::new("p@ss".into()),
-        notes: Some("noteZ".into()),
+    let entry = VaultData {
+        entries: vec![VaultEntry {
+            label: "label1".into(),
+            username: Some(SecretString::new("user123".into())),
+            password: SecretString::new("p@ss".into()),
+            notes: Some("noteZ".into()),
+        }],
+        otps: vec![],
     };
-    save_vault_file(&[entry], &path, pw).expect("seed vault");
+    save_vault_file(&entry, &path, pw).expect("seed vault");
 }
 
 #[test]

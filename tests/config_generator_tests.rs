@@ -5,7 +5,7 @@ use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
 
-use kevi::vault::models::VaultEntry;
+use kevi::vault::models::VaultData;
 use kevi::vault::persistence::load_vault_file;
 
 fn write_config(_dir: &std::path::Path, content: &str) {
@@ -57,8 +57,9 @@ fn generator_uses_config_length_when_not_overridden() {
         .arg("");
     cmd.assert().success();
 
-    let entries: Vec<VaultEntry> = load_vault_file(&path, pw).expect("load");
-    let e = entries
+    let data: VaultData = load_vault_file(&path, pw).expect("load");
+    let e = data
+        .entries
         .iter()
         .find(|e| e.label == "cfg_len")
         .expect("present");
@@ -100,8 +101,9 @@ fn passphrase_uses_config_words_and_sep_when_not_overridden() {
         .arg("");
     cmd.assert().success();
 
-    let entries: Vec<VaultEntry> = load_vault_file(&path, pw).expect("load");
-    let e = entries
+    let data: VaultData = load_vault_file(&path, pw).expect("load");
+    let e = data
+        .entries
         .iter()
         .find(|e| e.label == "cfg_phrase")
         .expect("present");

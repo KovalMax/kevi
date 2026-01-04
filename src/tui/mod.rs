@@ -13,21 +13,22 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::task::spawn_blocking;
 
-use crate::filesystem::clipboard::{copy_with_ttl, ttl_seconds, SystemClipboardEngine};
-use crate::filesystem::store::FileByteStore;
-use crate::session_management::resolver::CachedKeyResolver;
-use crate::vault::codec::RonCodec;
-use crate::vault::handlers::GetField;
-use crate::vault::ports::PasswordGenerator;
-use crate::vault::ports::{ByteStore, KeyResolver, VaultCodec};
-use crate::vault::service::VaultService;
-use secrecy::SecretString;
-
 use self::app::{App, Mode, View};
 use self::views::confirm::render_confirm;
 use self::views::details::render_details;
 use self::views::form::render_form;
 use self::views::list::render_list;
+use crate::cryptography::generator::DefaultPasswordGenerator;
+use crate::filesystem::clipboard::{copy_with_ttl, ttl_seconds, SystemClipboardEngine};
+use crate::filesystem::store::FileByteStore;
+use crate::session_management::resolver::CachedKeyResolver;
+use crate::vault::codec::RonCodec;
+use crate::vault::handlers::GetField;
+use crate::vault::models::VaultEntry;
+use crate::vault::ports::{ByteStore, KeyResolver, VaultCodec};
+use crate::vault::ports::{GenPolicy, PasswordGenerator};
+use crate::vault::service::VaultService;
+use secrecy::SecretString;
 
 pub async fn launch(config: &Config) -> Result<()> {
     // Compose service (same defaults as CLI flows)
@@ -52,7 +53,7 @@ pub async fn launch(config: &Config) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let ttl_secs = ttl_seconds(config, None);
-    let mut app = App::new(entries);
+    let mut app = App::new(entries.entries);
     let mut last_tick = Instant::now();
     let tick_rate = Duration::from_millis(200);
 
@@ -205,13 +206,13 @@ pub async fn launch(config: &Config) -> Result<()> {
                                                 let _ = spawn_blocking(move || {
                                                     let pw_final = if form_pw.is_empty() {
                                                         // Generate password via default generator
-                                                        let gen2 = crate::cryptography::generator::DefaultPasswordGenerator::new(Arc::new(crate::cryptography::generator::SystemRng));
-                                                        gen2.generate(&crate::vault::ports::GenPolicy::default())?
+                                                        let gen2 = DefaultPasswordGenerator::new(Arc::new(crate::cryptography::generator::SystemRng));
+                                                        gen2.generate(&GenPolicy::default())?
                                                     } else {
                                                         form_pw
                                                     };
 
-                                                    let entry_real = crate::vault::models::VaultEntry {
+                                                    let entry_real = VaultEntry {
                                                         label: label_for_save,
                                                         username: user_opt.map(|u| SecretString::new(u.into())),
                                                         password: SecretString::new(pw_final.into()),
@@ -221,18 +222,19 @@ pub async fn launch(config: &Config) -> Result<()> {
                                                 }).await.map_err(|_| anyhow!("task join error"))?;
                                             } else {
                                                 spawn_blocking(move || {
-                                                    let mut vault_entries = svc.load()?;
-                                                    if let Some(pos) = vault_entries
+                                                    let mut vault = svc.load()?;
+                                                    if let Some(pos) = vault
+                                                        .entries
                                                         .iter()
                                                         .position(|e| e.label == original_label)
                                                     {
-                                                        vault_entries[pos].label = label_for_save;
-                                                        vault_entries[pos].username = user_opt
+                                                        vault.entries[pos].label = label_for_save;
+                                                        vault.entries[pos].username = user_opt
                                                             .map(|u| SecretString::new(u.into()));
-                                                        vault_entries[pos].password =
+                                                        vault.entries[pos].password =
                                                             SecretString::new(form_pw.into());
-                                                        vault_entries[pos].notes = notes_opt;
-                                                        svc.save(&vault_entries)
+                                                        vault.entries[pos].notes = notes_opt;
+                                                        svc.save(&vault)
                                                     } else {
                                                         Ok(())
                                                     }
@@ -246,7 +248,7 @@ pub async fn launch(config: &Config) -> Result<()> {
                                                 spawn_blocking(move || svc_reload.load())
                                                     .await
                                                     .map_err(|_| anyhow!("task join error"))??;
-                                            app.replace_entries(new_entries);
+                                            app.replace_entries(new_entries.entries);
                                             app.view = View::List;
                                             app.toast("Saved".to_string());
                                         }
@@ -275,7 +277,7 @@ pub async fn launch(config: &Config) -> Result<()> {
                                                 .await
                                                 .map_err(|_| anyhow!("task join error"))
                                         {
-                                            app.replace_entries(ents);
+                                            app.replace_entries(ents.entries);
                                         }
                                         app.view = View::List;
                                         app.toast("Deleted".to_string());

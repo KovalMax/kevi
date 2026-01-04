@@ -35,6 +35,9 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Manage one-time passwords (TOTP)
+    #[command(subcommand)]
+    Otp(OtpCommand),
     /// Manage named vault profiles
     #[command(subcommand)]
     Profile(ProfileCommand),
@@ -176,6 +179,101 @@ pub enum Commands {
         #[arg(long)]
         path: Option<String>,
     },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum OtpCommand {
+    /// Add or update a TOTP entry
+    Add {
+        /// Entry label (name)
+        name: String,
+        /// Base32 secret (mutually exclusive with --from-uri)
+        #[arg(long, value_name = "BASE32", conflicts_with = "from_uri")]
+        secret: Option<String>,
+        /// otpauth:// URI to parse (mutually exclusive with --secret)
+        #[arg(long, value_name = "URI", conflicts_with = "secret")]
+        from_uri: Option<String>,
+        /// Optional issuer
+        #[arg(long)]
+        issuer: Option<String>,
+        /// Optional username of an account
+        #[arg(long)]
+        username: Option<String>,
+        /// Number of digits in generated code (6 or 8)
+        #[arg(long, value_parser = clap::value_parser!(u32).range(6..=8), default_value = "6")]
+        digits: u32,
+        /// Time step in seconds
+        #[arg(long, default_value = "30")]
+        period: u64,
+        /// Algorithm for HMAC
+        #[arg(long, value_enum, default_value = "sha1")]
+        algorithm: OtpAlgorithmArg,
+        /// Optional notes
+        #[arg(long)]
+        notes: Option<String>,
+        /// Overwrite existing entry if it already exists
+        #[arg(long = "on-duplicate-override")]
+        on_duplicate_override: bool,
+        /// Vault file path override
+        #[arg(long)]
+        path: Option<String>,
+    },
+
+    /// Generate a TOTP code for an entry
+    Get {
+        /// Entry label (name)
+        name: String,
+        /// Vault file path override
+        #[arg(long)]
+        path: Option<String>,
+        /// Do not copy to clipboard
+        #[arg(long)]
+        no_copy: bool,
+        /// Print the code to stdout
+        #[arg(long)]
+        echo: bool,
+        /// Generate code for a specific timestamp (seconds since Unix epoch)
+        #[arg(long)]
+        at: Option<u64>,
+        /// Bypass the session cache for this command (derive key from passphrase without caching)
+        #[arg(long)]
+        once: bool,
+        /// Output JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// List TOTP entries
+    List {
+        /// Vault file path override
+        #[arg(long)]
+        path: Option<String>,
+        /// Filter labels by substring (case-insensitive)
+        #[arg(long)]
+        query: Option<String>,
+        /// Output JSON array (machine-readable)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Remove a TOTP entry by name
+    Rm {
+        /// Entry label (name)
+        name: String,
+        /// Vault file path override
+        #[arg(long)]
+        path: Option<String>,
+        /// Do not ask for confirmation
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+pub enum OtpAlgorithmArg {
+    Sha1,
+    Sha256,
+    Sha512,
 }
 
 #[derive(Subcommand, Debug, Clone)]
