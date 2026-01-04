@@ -1,4 +1,5 @@
 ![ci workflow](https://github.com/KovalMax/kevi/actions/workflows/ci.yml/badge.svg)
+[![codecov](https://codecov.io/github/KovalMax/kevi/graph/badge.svg?token=FOG7F18PST)](https://codecov.io/github/KovalMax/kevi)
 
 # Kevi — encrypted CLI vault
 
