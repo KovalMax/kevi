@@ -37,19 +37,6 @@ fn map_algo_maps_all_variants() {
         totp_rs::Algorithm::SHA512
     ));
 
-    assert!(matches!(
-        OtpAlgorithm::map_to_otp(&totp_rs::Algorithm::SHA1),
-        OtpAlgorithm::Sha1
-    ));
-    assert!(matches!(
-        OtpAlgorithm::map_to_otp(&totp_rs::Algorithm::SHA256),
-        OtpAlgorithm::Sha256
-    ));
-    assert!(matches!(
-        OtpAlgorithm::map_to_otp(&totp_rs::Algorithm::SHA512),
-        OtpAlgorithm::Sha512
-    ));
-
     assert_eq!(OtpAlgorithm::Sha1.format().to_string(), "SHA1".to_string());
     assert_eq!(
         OtpAlgorithm::Sha256.format().to_string(),

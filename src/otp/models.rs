@@ -28,14 +28,6 @@ impl OtpAlgorithm {
         }
     }
 
-    pub fn map_to_otp(algo: &totp_rs::Algorithm) -> OtpAlgorithm {
-        match algo {
-            totp_rs::Algorithm::SHA1 => OtpAlgorithm::Sha1,
-            totp_rs::Algorithm::SHA256 => OtpAlgorithm::Sha256,
-            totp_rs::Algorithm::SHA512 => OtpAlgorithm::Sha512,
-        }
-    }
-
     pub fn format(&self) -> &'static str {
         match self {
             OtpAlgorithm::Sha1 => "SHA1",
