@@ -156,7 +156,7 @@ pub fn header_fingerprint_excluding_nonce(hdr: &KeviHeader) -> String {
 }
 
 pub fn encrypt_vault(data: &[u8], password: &str) -> Result<Vec<u8>> {
-    // Derive key using defaults, then delegate to key-based path to avoid AEAD duplication
+    // Derive key using defaults, then delegate to a key-based path to avoid AEAD duplication
     let (m_cost_kib, t_cost, p_lanes) = default_params();
     let rng = SystemRandom::new();
     let mut salt = [0u8; SALT_LEN];
@@ -173,7 +173,7 @@ pub fn decrypt_vault(data: &[u8], password: &str) -> Result<Vec<u8>> {
     decrypt_vault_with_key(data, &key)
 }
 
-/// Encrypt with a provided derived key and explicit params/salt. Generates a new random nonce.
+/// Encrypt with a provided derived key and explicit params/salt. Generates new random nonce.
 pub fn encrypt_vault_with_key(
     data: &[u8],
     m_cost_kib: u32,
@@ -210,7 +210,7 @@ pub fn decrypt_vault_with_key(data: &[u8], derived_key: &[u8; KEY_LEN]) -> Resul
     let unbound = aead::UnboundKey::new(&aead::AES_256_GCM, derived_key)
         .map_err(|_| anyhow!("failed to create opening key"))?;
     let opening_key = aead::LessSafeKey::new(unbound);
-    // Extract nonce from header again for convenience
+    // Extract nonce from the header again for convenience
     let nonce = aead::Nonce::try_assume_unique_for_key(&data[ct_offset - NONCE_LEN..ct_offset])
         .map_err(|_| anyhow!("invalid nonce"))?;
     let aad = aead::Aad::from(&data[..ct_offset]);

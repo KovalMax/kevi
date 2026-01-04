@@ -6,7 +6,7 @@ use kevi::session_management::resolver::{
 use kevi::session_management::session::load;
 use kevi::vault::codec::RonCodec;
 use kevi::vault::handlers::Vault;
-use kevi::vault::models::VaultEntry;
+use kevi::vault::models::{VaultData, VaultEntry};
 use kevi::vault::service::VaultService;
 use secrecy::SecretString;
 use std::env;
@@ -32,14 +32,19 @@ fn service_uses_cached_derived_key_session() {
         password: SecretString::new("pw!".into()),
         notes: None,
     };
-    service.save(&[entry]).expect("save using cache");
+    service
+        .save(&VaultData {
+            entries: vec![entry],
+            otps: vec![],
+        })
+        .expect("save using cache");
 
     // Clear env to ensure resolver uses cached derived key
     env::remove_var("KEVI_PASSWORD");
     // Load it back (should not prompt, should use dk session)
     let loaded = service.load().expect("load using cache");
-    assert_eq!(loaded.len(), 1);
-    assert_eq!(loaded[0].label, "cached");
+    assert_eq!(loaded.entries.len(), 1);
+    assert_eq!(loaded.entries[0].label, "cached");
 }
 
 #[tokio::test]
@@ -49,7 +54,10 @@ async fn vault_handle_unlock_and_lock_manage_session() {
     // Initialize an encrypted vault file (empty) so header exists
     {
         use kevi::vault::persistence::save_vault_file;
-        let entries: Vec<kevi::vault::models::VaultEntry> = Vec::new();
+        let entries = kevi::vault::models::VaultData {
+            entries: Vec::new(),
+            otps: Vec::new(),
+        };
         // Ensure password available
         std::env::set_var("KEVI_PASSWORD", "pw");
         save_vault_file(&entries, &path, "pw").expect("init empty vault");

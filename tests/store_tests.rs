@@ -1,4 +1,4 @@
-use kevi::vault::models::VaultEntry;
+use kevi::vault::models::{VaultData, VaultEntry};
 use kevi::vault::persistence::{load_vault_file, save_vault_file};
 use secrecy::{ExposeSecret, SecretString};
 use tempfile::tempdir;
@@ -16,17 +16,20 @@ fn test_add_and_get_entry() {
         notes: None,
     };
 
-    let vault = vec![entry.clone()];
+    let vault = VaultData {
+        entries: vec![entry.clone()],
+        otps: vec![],
+    };
     save_vault_file(&vault, &_path, pw).unwrap();
 
     let loaded = load_vault_file(&_path, pw).unwrap();
-    assert_eq!(loaded.len(), 1);
-    assert_eq!(loaded[0].label, "testsite");
+    assert_eq!(loaded.entries.len(), 1);
+    assert_eq!(loaded.entries[0].label, "testsite");
     assert_eq!(
-        loaded[0].username.as_ref().unwrap().expose_secret(),
+        loaded.entries[0].username.as_ref().unwrap().expose_secret(),
         "tester"
     );
-    assert_eq!(loaded[0].password.expose_secret(), "1234");
+    assert_eq!(loaded.entries[0].password.expose_secret(), "1234");
 }
 
 #[test]
@@ -35,26 +38,29 @@ fn test_remove_entry() {
     let _path = dir.path().join("vault.ron");
     let pw = "testpw";
 
-    let mut vault = vec![
-        VaultEntry {
-            label: "one".into(),
-            username: None,
-            password: SecretString::new("p1".into()),
-            notes: None,
-        },
-        VaultEntry {
-            label: "two".into(),
-            username: None,
-            password: SecretString::new("p2".into()),
-            notes: None,
-        },
-    ];
+    let mut vault = VaultData {
+        entries: vec![
+            VaultEntry {
+                label: "one".into(),
+                username: None,
+                password: SecretString::new("p1".into()),
+                notes: None,
+            },
+            VaultEntry {
+                label: "two".into(),
+                username: None,
+                password: SecretString::new("p2".into()),
+                notes: None,
+            },
+        ],
+        otps: vec![],
+    };
     save_vault_file(&vault, &_path, pw).unwrap();
 
-    vault.retain(|e| e.label != "one");
+    vault.entries.retain(|e| e.label != "one");
     save_vault_file(&vault, &_path, pw).unwrap();
 
     let reloaded = load_vault_file(&_path, pw).unwrap();
-    assert_eq!(reloaded.len(), 1);
-    assert_eq!(reloaded[0].label, "two");
+    assert_eq!(reloaded.entries.len(), 1);
+    assert_eq!(reloaded.entries[0].label, "two");
 }

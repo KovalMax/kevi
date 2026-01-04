@@ -21,6 +21,8 @@ toml = "0.9.8"
 serde_json = "1.0"
 sha2 = "0.10"
 hex = "0.4"
+# 🔢 TOTP
+totp-rs = { version = "5.5", default-features = true, features = ["otpauth"] }
 # 🧪 CLI
 clap = { version = "4.5.4", features = ["derive"] }
 
@@ -29,7 +31,7 @@ copypasta = "0.10.1"
 inquire = "0.9.1"
 
 # 🌈 Terminal UI
-ratatui = "0.29.0"
+ratatui = "0.30.0"
 crossterm = "0.29.0"
 
 # 🧪 Error handling
@@ -43,18 +45,17 @@ libc = { version = "0.2", optional = true }
 
 # 🔁 Async runtime
 tokio = { version = "1.46", features = ["rt-multi-thread", "macros", "fs"] }
-
-# 🆔 UUID generation (for internal use, optional)
-#uuid = { version = "1.8", features = ["v4"] }
-
-# 🧪 Testing
-assert_cmd = "2.0"
-predicates = "3.1"
 dirs = "6.0.0"
 
+
 [dev-dependencies]
+# 🧪 Testing
 tempfile = "3.10"
 serial_test = "3.0"
+gag = "1.0.0"
+assert_cmd = "2.0"
+predicates = "3.1"
+rand = "0.9.2"
 
 [build-dependencies]
 chrono = { version = "0.4", default-features = true }
