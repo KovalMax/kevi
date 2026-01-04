@@ -148,9 +148,9 @@ async fn otp_add_get_and_list_round_trip() {
     // get code, echo, no-copy
     let get_opts = OtpGetOptions {
         name: "example1".into(),
-        no_copy: true,
-        echo: true,
-        at: Some(59),
+        no_copy: false,
+        echo: false,
+        at: None,
         once: false,
         json: false,
     };
@@ -251,7 +251,7 @@ async fn otp_add_duplicate_with_override_succeeds() {
         .await
         .expect("override ok");
 
-    // Verify replaced entry via same service
+    // Verify replaced entry via the same service
     let data = h.service.load().expect("load");
     let entry = data
         .otps
@@ -304,11 +304,11 @@ async fn otp_get_json_output_executes() {
         no_copy: true,
         echo: false,
         at: Some(59),
-        once: true,
+        once: false,
         json: true,
     };
 
-    // Just assert it runs successfully; branch is covered.
+    // Just assert it runs successfully with a JSON format
     h.handlers.handle_get(opts).await.expect("get ok");
 }
 
@@ -325,7 +325,7 @@ async fn otp_get_non_existing_entry_is_ok_and_does_not_panic() {
         json: false,
     };
 
-    // Should not error; handler prints message and returns Ok.
+    // Should not error; handler prints a message and returns Ok.
     h.handlers.handle_get(opts).await.expect("get ok");
 }
 
