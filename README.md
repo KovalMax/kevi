@@ -22,7 +22,7 @@ Kevi focuses on:
 - **Encrypted vault:**
   - Argon2id KDF with configurable memory/time parameters
   - AES‑256‑GCM for authenticated encryption
-  - Atomic writes with backup rotation on save
+  - Atomically writes with backup rotation on save
 - **Password management:**
   - Add, get, list, edit, remove entries
   - Strong password/passphrase generator with configurable policy
@@ -160,7 +160,7 @@ kevi get github
 # Prints the password to stdout, no clipboard interaction
 kevi get github --echo --no-copy
 
-# Prints the username field to stdout,
+# Prints nothing, copies user to clipboard for the configured TTL
 kevi get github --field user
 ```
 
@@ -213,7 +213,7 @@ kevi otp add github-2fa \
 - ```--secret``` is the Base32‑encoded key exported from your authenticator.
 - ```--issuer```, ```--username```, ```--digits```, ```--period```, ```--algorithm``` override defaults when needed.
 
-### From an otpauth://URI
+### From an otpauth URI
 ```bash
 kevi otp add github-2fa --from-uri "otpauth://totp/GitHub:you@example.com?secret=JBSWY3DPEHPK3PXP&issuer=GitHub"
 ```
@@ -425,12 +425,12 @@ This will create an HTML report under a `coverage-html` directory.
 
 This repository includes a GitHub Actions workflow that runs:
 
-* `cargo fmt` (format check)
-* `cargo clippy`
-* `cargo build`
-* `cargo test` (with and without `memlock` on Linux)
+* `cargo fmt --all` (format check)
+* `cargo clippy --all-targets --all-features -- -D warnings`
+* `cargo build --all`
+* `cargo test --all` (with and without `memlock` on Linux)
 * `cargo audit` (via a dedicated job)
-* `cargo-llvm-cov` for coverage reporting
+* `cargo llvm-cov` for coverage reporting
 
 You can mirror these steps locally before pushing changes.
 

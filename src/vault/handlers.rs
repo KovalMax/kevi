@@ -26,6 +26,7 @@ use inquire::{Confirm, Password, Text};
 use secrecy::{ExposeSecret, SecretBox, SecretString};
 use serde_json::json;
 use std::env;
+use std::fmt::Display;
 use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
@@ -36,6 +37,16 @@ pub enum GetField {
     Password,
     User,
     Notes,
+}
+
+impl Display for GetField {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GetField::Password => write!(f, "Password"),
+            GetField::User => write!(f, "Username"),
+            GetField::Notes => write!(f, "notes"),
+        }
+    }
 }
 
 pub struct Vault<'a> {

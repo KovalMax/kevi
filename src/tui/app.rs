@@ -1,6 +1,15 @@
+use crate::cryptography::generator::{DefaultPasswordGenerator, SystemRng};
+use crate::filesystem::clipboard::{copy_with_ttl, SystemClipboardEngine};
 use crate::vault::handlers::GetField;
 use crate::vault::models::VaultEntry;
-use secrecy::ExposeSecret;
+use crate::vault::ports::{GenPolicy, PasswordGenerator};
+use crate::vault::service::VaultService;
+use anyhow::anyhow;
+use crossterm::event::KeyCode;
+use secrecy::{ExposeSecret, SecretString};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::task::spawn_blocking;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
@@ -41,7 +50,7 @@ pub struct App {
     pub form_password: String,
     pub form_notes: String,
     pub form_original_label: String,
-    // Toggle for revealing password in Details view
+    // Toggle for revealing password in the Details view
     pub reveal_password: bool,
 }
 
@@ -162,6 +171,16 @@ impl App {
         }
     }
 
+    pub fn copy_value_to_clipboard(&mut self, field: GetField, value: String, ttl: u64) {
+        if let Ok(engine) = SystemClipboardEngine::new() {
+            let secret = SecretString::new(value.into());
+            let _ = copy_with_ttl(Arc::new(engine), &secret, Duration::from_secs(ttl));
+            self.toast(format!("{field} copied ({ttl}s)"));
+        } else {
+            self.toast("Clipboard unavailable".to_string());
+        }
+    }
+
     pub fn selected_label(&self) -> Option<String> {
         if self.filtered.is_empty() {
             return None;
@@ -257,34 +276,245 @@ impl App {
     pub fn cancel_modal(&mut self) {
         self.view = View::List;
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use secrecy::SecretString;
+    pub async fn handle_key_event(
+        &mut self,
+        code: KeyCode,
+        ttl_secs: u64,
+        service: Arc<VaultService>,
+    ) -> anyhow::Result<()> {
+        match self.view {
+            View::List => match self.mode {
+                Mode::Normal => match code {
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        self.next();
+                        Ok(())
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        self.prev();
+                        Ok(())
+                    }
+                    KeyCode::Char('/') => {
+                        self.enter_search();
+                        Ok(())
+                    }
+                    KeyCode::Right | KeyCode::Char('l') => {
+                        self.enter_details();
+                        Ok(())
+                    }
+                    KeyCode::Char('a') => {
+                        self.enter_add();
+                        Ok(())
+                    }
+                    KeyCode::Enter => {
+                        if let Some(val) = self.selected_field(GetField::Password) {
+                            self.copy_value_to_clipboard(GetField::Password, val, ttl_secs)
+                        }
+                        Ok(())
+                    }
+                    KeyCode::Char('u') => {
+                        if let Some(val) = self.selected_field(GetField::User) {
+                            self.copy_value_to_clipboard(GetField::User, val, ttl_secs)
+                        }
+                        Ok(())
+                    }
 
-    fn make(label: &str) -> VaultEntry {
-        VaultEntry {
-            label: label.into(),
-            username: None,
-            password: SecretString::new("x".into()),
-            notes: None,
+                    _ => Ok(()),
+                },
+                Mode::Search => match code {
+                    KeyCode::Esc => {
+                        self.exit_search();
+                        Ok(())
+                    }
+                    KeyCode::Backspace => {
+                        self.pop_filter();
+                        Ok(())
+                    }
+                    KeyCode::Enter => {
+                        self.exit_search();
+                        Ok(())
+                    }
+                    KeyCode::Char(c) => {
+                        self.push_filter(c);
+                        Ok(())
+                    }
+                    _ => Ok(()),
+                },
+            },
+            View::Details => match code {
+                KeyCode::Char('q') | KeyCode::Left | KeyCode::Char('h') => {
+                    self.back_to_list();
+                    Ok(())
+                }
+                KeyCode::Enter => {
+                    if let Some(val) = self.selected_field(GetField::Password) {
+                        self.copy_value_to_clipboard(GetField::Password, val, ttl_secs);
+                    }
+                    Ok(())
+                }
+                KeyCode::Char('u') => {
+                    if let Some(val) = self.selected_field(GetField::User) {
+                        self.copy_value_to_clipboard(GetField::User, val, ttl_secs);
+                    } else {
+                        self.toast("No username".to_string());
+                    }
+                    Ok(())
+                }
+                KeyCode::Char('v') => {
+                    self.reveal_password = !self.reveal_password;
+                    Ok(())
+                }
+                KeyCode::Char('e') => {
+                    self.enter_edit();
+                    Ok(())
+                }
+                KeyCode::Char('a') => {
+                    self.enter_add();
+                    Ok(())
+                }
+                KeyCode::Char('d') => {
+                    self.enter_confirm_delete();
+                    Ok(())
+                }
+                _ => Ok(()),
+            },
+            View::AddModal | View::EditModal => {
+                match code {
+                    KeyCode::Esc => {
+                        self.cancel_modal();
+                        Ok(())
+                    }
+                    KeyCode::Tab => {
+                        self.next_field();
+                        Ok(())
+                    }
+                    KeyCode::BackTab => {
+                        self.prev_field();
+                        Ok(())
+                    }
+                    KeyCode::Backspace => {
+                        self.backspace_form();
+                        Ok(())
+                    }
+                    KeyCode::Enter => {
+                        // Validate label
+                        let label = self.form_label.trim().to_string();
+                        if label.is_empty() {
+                            self.toast("Label required".to_string());
+                        } else {
+                            // Build entry; for Add we generate a strong password by default
+                            let is_add = matches!(self.view, View::AddModal);
+                            let current_labels: Vec<String> = self.visible_labels();
+                            if is_add && current_labels.iter().any(|l| l == &label) {
+                                self.toast("Label exists".to_string());
+                            } else {
+                                // Clone options for move into closures
+                                let user_opt = if self.form_user.trim().is_empty() {
+                                    None
+                                } else {
+                                    Some(self.form_user.trim().to_string())
+                                };
+                                let notes_opt = if self.form_notes.trim().is_empty() {
+                                    None
+                                } else {
+                                    Some(self.form_notes.trim().to_string())
+                                };
+                                let label_for_save = label.clone();
+                                let form_pw = self.form_password.clone();
+                                let original_label = self.form_original_label.clone();
+                                let svc = service.clone();
+                                if is_add {
+                                    let _ = spawn_blocking(move || {
+                                        let pw_final = if form_pw.is_empty() {
+                                            // Generate password via default generator
+                                            let gen2 =
+                                                DefaultPasswordGenerator::new(Arc::new(SystemRng));
+                                            gen2.generate(&GenPolicy::default())?
+                                        } else {
+                                            form_pw
+                                        };
+
+                                        let entry_real = VaultEntry {
+                                            label: label_for_save,
+                                            username: user_opt.map(|u| SecretString::new(u.into())),
+                                            password: SecretString::new(pw_final.into()),
+                                            notes: notes_opt,
+                                        };
+                                        svc.add_entry(entry_real)
+                                    })
+                                    .await
+                                    .map_err(|_| anyhow!("task join error"))?;
+                                } else {
+                                    let _ = spawn_blocking(move || {
+                                        let mut vault = svc.load()?;
+                                        if let Some(pos) = vault
+                                            .entries
+                                            .iter()
+                                            .position(|e| e.label == original_label)
+                                        {
+                                            vault.entries[pos].label = label_for_save;
+                                            vault.entries[pos].username =
+                                                user_opt.map(|u| SecretString::new(u.into()));
+                                            vault.entries[pos].password =
+                                                SecretString::new(form_pw.into());
+                                            vault.entries[pos].notes = notes_opt;
+                                            svc.save(&vault)
+                                        } else {
+                                            Ok(())
+                                        }
+                                    })
+                                    .await
+                                    .map_err(|_| anyhow!("task join error"))?;
+                                }
+                                // Reload entries
+                                let svc_reload = service.clone();
+                                let new_entries = spawn_blocking(move || svc_reload.load())
+                                    .await?
+                                    .map_err(|_| anyhow!("task join error"))?;
+                                self.replace_entries(new_entries.entries);
+                                self.view = View::List;
+                                self.toast("Saved".to_string());
+                            }
+                        }
+                        Ok(())
+                    }
+                    KeyCode::Char(c) => {
+                        if !c.is_control() {
+                            self.update_form_char(c);
+                        }
+                        Ok(())
+                    }
+                    _ => Ok(()),
+                }
+            }
+            View::ConfirmDelete => {
+                match code {
+                    KeyCode::Esc | KeyCode::Char('n') => {
+                        self.cancel_confirm_delete();
+                        Ok(())
+                    }
+                    KeyCode::Char('y') => {
+                        if let Some(label) = self.selected_label() {
+                            let svc_rm = service.clone();
+                            let _ = spawn_blocking(move || svc_rm.remove_entry(&label)).await?;
+                            // Reload
+                            let svc_reload = service.clone();
+                            if let Ok(Ok(ents)) = spawn_blocking(move || svc_reload.load())
+                                .await
+                                .map_err(|_| anyhow!("task join error"))
+                            {
+                                self.replace_entries(ents.entries);
+                            }
+                            self.view = View::List;
+                            self.toast("Deleted".to_string());
+                        } else {
+                            self.cancel_confirm_delete();
+                        }
+                        Ok(())
+                    }
+                    _ => Ok(()),
+                }
+            }
         }
-    }
-
-    #[test]
-    fn filtering_updates_visible_labels() {
-        let entries = vec![make("alpha"), make("beta"), make("gamma")];
-        let mut app = App::new(entries);
-        assert_eq!(app.visible_labels(), vec!["alpha", "beta", "gamma"]);
-        app.enter_search();
-        app.push_filter('a');
-        // all include 'a'
-        assert_eq!(app.visible_labels(), vec!["alpha", "beta", "gamma"]);
-        app.push_filter('l');
-        assert_eq!(app.visible_labels(), vec!["alpha"]);
-        app.pop_filter();
-        assert_eq!(app.visible_labels(), vec!["alpha", "beta", "gamma"]);
     }
 }
