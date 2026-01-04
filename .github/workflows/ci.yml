@@ -102,15 +102,16 @@ jobs:
         run: |
           cargo llvm-cov --workspace --no-cfg-coverage --lcov --output-path lcov.info
 
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: lcov.info
+          fail_ci_if_error: true
+
       - name: Generate coverage (HTML)
         run: |
           cargo llvm-cov --workspace --no-cfg-coverage --html --output-dir coverage-html
-
-      - name: Upload lcov artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: lcov.info
-          path: lcov.info
 
       - name: Upload HTML coverage artifact
         uses: actions/upload-artifact@v4
