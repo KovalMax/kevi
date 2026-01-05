@@ -79,28 +79,31 @@ fn test_otp() {
 
 #[test]
 fn test_tui_runs() {
-    let td = tempdir().unwrap();
-    let config_dir = td.path().join("config");
-    let data_dir = td.path().join("data");
-    fs::create_dir_all(&config_dir).unwrap();
-    fs::create_dir_all(&data_dir).unwrap();
+    #[cfg(all(test, target_family = "unix"))]
+    {
+        let td = tempdir().unwrap();
+        let config_dir = td.path().join("config");
+        let data_dir = td.path().join("data");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::create_dir_all(&data_dir).unwrap();
 
-    let mut cmd = Command::cargo_bin("kevi").unwrap();
-    cmd.env("KEVI_CONFIG_DIR", &config_dir)
-        .env("KEVI_DATA_DIR", &data_dir)
-        .env("KEVI_PASSWORD", "pw")
-        .arg("init")
-        .assert()
-        .success();
+        let mut cmd = Command::cargo_bin("kevi").unwrap();
+        cmd.env("KEVI_CONFIG_DIR", &config_dir)
+            .env("KEVI_DATA_DIR", &data_dir)
+            .env("KEVI_PASSWORD", "pw")
+            .arg("init")
+            .assert()
+            .success();
 
-    let mut tui_cmd = Command::cargo_bin("kevi").unwrap();
-    tui_cmd
-        .env("KEVI_CONFIG_DIR", &config_dir)
-        .env("KEVI_DATA_DIR", &data_dir)
-        .env("KEVI_PASSWORD", "pw")
-        .arg("tui");
+        let mut tui_cmd = Command::cargo_bin("kevi").unwrap();
+        tui_cmd
+            .env("KEVI_CONFIG_DIR", &config_dir)
+            .env("KEVI_DATA_DIR", &data_dir)
+            .env("KEVI_PASSWORD", "pw")
+            .arg("tui");
 
-    // Run briefly and kill
-    let _ = tui_cmd.output().expect("tui starts");
-    std::thread::sleep(std::time::Duration::from_millis(500));
+        // Run briefly and kill
+        let _ = tui_cmd.output().expect("tui starts");
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
 }
