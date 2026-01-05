@@ -27,7 +27,7 @@ Kevi focuses on:
   - Add, get, list, edit, remove entries
   - Strong password/passphrase generator with configurable policy
   - Clipboard integration with configurable TTL
-- Derived‑key **session caching** (optional) to avoid re‑typing the master passphrase repeatedly.
+- Derived‑key **session caching** to avoid re‑typing the master passphrase repeatedly.
 - **TOTP / OTP:**
   - Store TOTP secrets (Base32 or `otpauth://` URI)
   - Generate current codes
@@ -35,8 +35,8 @@ Kevi focuses on:
 - **Config & profiles:**
   - `config.toml` with profiles and default vault path
   - CLI/env/config/defaults precedence for options
-- **TUI (optional):**
-  - Ratatui‑based UI for browsing and copying credentials
+- **TUI:**
+  - Ratatui‑based UI for browsing, editing, adding, and copying credentials
 
 > For a detailed description of the cryptography, threat model, and
 > operational security guidance, see [`SECURITY.md`](SECURITY.md).
@@ -141,10 +141,11 @@ The vault is stored as an encrypted RON file (e.g., vault.ron) in the data direc
 ### Add a password entry
 ```bash
 # interactively enter username, password, notes, or let Kevi generate one
-kevi add github
+kevi add
 
 # or specify all fields explicitly
-kevi add my-site \
+kevi add \
+  --label github \
   --user alice \
   --password 's3cret' \
   --notes 'personal account'
