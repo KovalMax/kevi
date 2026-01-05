@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use kevi::filesystem::store::FileByteStore;
 use kevi::session_management::resolver::CachedKeyResolver;
-use kevi::tui::app::{App, Mode, View};
+use kevi::tui::app::{App, FormField, Mode, View};
 use kevi::tui::views::list::render_list;
 use kevi::vault::codec::RonCodec;
 use kevi::vault::models::VaultEntry;
@@ -14,7 +14,8 @@ use kevi::vault::service::VaultService;
 use secrecy::SecretString;
 use tempfile::tempdir;
 
-fn make(label: &str, pw: &str) -> VaultEntry {
+fn entry(label: &str, pw: Option<&str>) -> VaultEntry {
+    let pw = pw.unwrap_or("test");
     VaultEntry {
         label: label.into(),
         username: None,
@@ -25,7 +26,10 @@ fn make(label: &str, pw: &str) -> VaultEntry {
 
 #[test]
 fn tui_renders_labels_and_never_secrets() {
-    let entries = vec![make("alpha", "secret123"), make("beta", "topsecret")];
+    let entries = vec![
+        entry("alpha", Some("secret123")),
+        entry("beta", Some("topsecret")),
+    ];
     let app = App::new(entries);
 
     let backend = TestBackend::new(60, 10);
@@ -55,7 +59,11 @@ fn tui_renders_labels_and_never_secrets() {
 
 #[test]
 fn filtering_updates_visible_labels() {
-    let entries = vec![make("alpha", "x"), make("beta", "x"), make("gamma", "x")];
+    let entries = vec![
+        entry("alpha", None),
+        entry("beta", None),
+        entry("gamma", None),
+    ];
     let mut app = App::new(entries);
     assert_eq!(app.visible_labels(), vec!["alpha", "beta", "gamma"]);
     app.enter_search();
@@ -70,7 +78,7 @@ fn filtering_updates_visible_labels() {
 
 #[test]
 fn navigation_wraps_and_ignores_empty() {
-    let entries = vec![make("a", "x"), make("b", "x"), make("c", "x")];
+    let entries = vec![entry("a", None), entry("b", None), entry("c", None)];
     let mut app = App::new(entries);
 
     assert_eq!(app.selected, 0);
@@ -85,7 +93,11 @@ fn navigation_wraps_and_ignores_empty() {
 
 #[test]
 fn search_filters_and_resets_selection() {
-    let entries = vec![make("alpha", "x"), make("beta", "x"), make("gamma", "x")];
+    let entries = vec![
+        entry("alpha", None),
+        entry("beta", None),
+        entry("gamma", None),
+    ];
     let mut app = App::new(entries);
 
     app.enter_search();
@@ -101,7 +113,7 @@ fn search_filters_and_resets_selection() {
 
 #[test]
 fn view_transitions_and_form_state() {
-    let entries = vec![make("alpha", "x")];
+    let entries = vec![entry("alpha", None)];
     let mut app = App::new(entries);
 
     app.enter_details();
@@ -122,7 +134,7 @@ fn view_transitions_and_form_state() {
 
 #[test]
 fn toast_and_tick_clears_message() {
-    let entries = vec![make("alpha", "x")];
+    let entries = vec![entry("alpha", None)];
     let mut app = App::new(entries);
 
     app.toast("hello".to_string());
@@ -137,7 +149,7 @@ fn toast_and_tick_clears_message() {
 
 #[tokio::test]
 async fn list_navigation_keys_update_app_state() {
-    let entries = vec![make("a", "x"), make("b", "x"), make("c", "x")];
+    let entries = vec![entry("a", None), entry("b", None), entry("c", None)];
 
     let dir = tempdir().unwrap();
     let path = dir.path().join("vault.ron");
@@ -168,10 +180,6 @@ async fn list_navigation_keys_update_app_state() {
 
 #[tokio::test]
 async fn search_mode_handles_chars_and_backspace() {
-    let entries = vec![make("art", "x"), make("bow", "x"), make("cross", "x")];
-    let mut app = App::new(entries);
-    app.enter_search();
-
     let dir = tempdir().unwrap();
     let path = dir.path().join("vault.ron");
     env::set_var("KEVI_PASSWORD", "svcpass");
@@ -179,6 +187,10 @@ async fn search_mode_handles_chars_and_backspace() {
     let codec = Arc::new(RonCodec);
     let resolver = Arc::new(CachedKeyResolver::new(path.clone()));
     let service = Arc::new(VaultService::new(store, codec, resolver));
+
+    let entries = vec![entry("art", None), entry("bow", None), entry("cross", None)];
+    let mut app = App::new(entries);
+    app.enter_search();
 
     app.handle_key_event(KeyCode::Char('f'), 15, service.clone())
         .await
@@ -194,4 +206,205 @@ async fn search_mode_handles_chars_and_backspace() {
         .await
         .unwrap();
     assert_eq!(app.mode, Mode::Normal);
+}
+
+#[tokio::test]
+async fn confirm_delete_modal() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("vault.ron");
+    env::set_var("KEVI_PASSWORD", "svcpass");
+    let store = Arc::new(FileByteStore::new(path.clone()));
+    let codec = Arc::new(RonCodec);
+    let resolver = Arc::new(CachedKeyResolver::new(path.clone()));
+    let service = Arc::new(VaultService::new(store, codec, resolver));
+
+    let entries = vec![entry("to-delete", None)];
+    let mut app = App::new(entries);
+    app.enter_confirm_delete();
+    assert_eq!(app.view, View::ConfirmDelete);
+
+    // n → cancel
+    app.handle_key_event(KeyCode::Char('n'), 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.view, View::Details);
+
+    app.handle_key_event(KeyCode::Char('d'), 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.view, View::ConfirmDelete);
+
+    // y → delete
+    app.handle_key_event(KeyCode::Char('y'), 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.view, View::List);
+    assert_eq!(app.visible_labels().len(), 0);
+}
+
+#[tokio::test]
+async fn edit_modal_form_navigation() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("vault.ron");
+    env::set_var("KEVI_PASSWORD", "svcpass");
+    let store = Arc::new(FileByteStore::new(path.clone()));
+    let codec = Arc::new(RonCodec);
+    let resolver = Arc::new(CachedKeyResolver::new(path.clone()));
+    let service = Arc::new(VaultService::new(store, codec, resolver));
+
+    let entries = vec![VaultEntry {
+        label: "edit-me".into(),
+        username: Some(SecretString::new("olduser".into())),
+        password: SecretString::new("oldpass".into()),
+        notes: Some("old-note".into()),
+    }];
+    let mut app = App::new(entries);
+    app.enter_edit();
+    assert_eq!(app.view, View::EditModal);
+
+    // Form should be pre-filled
+    assert_eq!(app.form_label, "edit-me");
+    assert_eq!(app.form_user, "olduser");
+    assert_eq!(app.form_password, "oldpass");
+    assert_eq!(app.form_notes, "old-note");
+
+    // Same navigation as add modal
+    app.handle_key_event(KeyCode::Tab, 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.form_field, FormField::User);
+
+    app.handle_key_event(KeyCode::Tab, 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.form_field, FormField::Password);
+
+    // Enter → save (validation happens in real handler)
+    app.handle_key_event(KeyCode::Enter, 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.view, View::List);
+
+    // Esc → cancel
+    app.enter_edit();
+    app.handle_key_event(KeyCode::Esc, 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.view, View::List); // Edit cancel → back to details
+}
+
+#[tokio::test]
+async fn list_normal_mode_basic_navigation() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("vault.ron");
+    env::set_var("KEVI_PASSWORD", "svcpass");
+    let store = Arc::new(FileByteStore::new(path.clone()));
+    let codec = Arc::new(RonCodec);
+    let resolver = Arc::new(CachedKeyResolver::new(path.clone()));
+    let service = Arc::new(VaultService::new(store, codec, resolver));
+
+    let entries = vec![
+        entry("alpha", None),
+        entry("beta", None),
+        entry("gamma", None),
+    ];
+    let mut app = App::new(entries);
+    assert_eq!(app.view, View::List);
+    assert_eq!(app.mode, Mode::Normal);
+
+    // j/down → next
+    app.handle_key_event(KeyCode::Char('j'), 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.selected, 1);
+
+    // k/up → prev
+    app.handle_key_event(KeyCode::Char('k'), 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.selected, 0);
+
+    // / → enter search
+    app.handle_key_event(KeyCode::Char('/'), 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.mode, Mode::Search);
+
+    app.handle_key_event(KeyCode::Esc, 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.mode, Mode::Normal);
+
+    // l/right → details
+    app.handle_key_event(KeyCode::Char('l'), 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.view, View::Details);
+
+    // e → edit
+    app.handle_key_event(KeyCode::Char('e'), 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.view, View::EditModal);
+
+    // esc -> list
+    app.handle_key_event(KeyCode::Esc, 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.view, View::List);
+
+    // a → add
+    app.handle_key_event(KeyCode::Char('a'), 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.view, View::AddModal);
+
+    // esc -> list
+    app.handle_key_event(KeyCode::Esc, 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.view, View::List);
+
+    // left → details
+    app.handle_key_event(KeyCode::Right, 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.view, View::Details);
+
+    // d → delete modal
+    app.handle_key_event(KeyCode::Char('d'), 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.view, View::ConfirmDelete);
+}
+
+#[tokio::test]
+async fn empty_state_handling() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("vault.ron");
+    env::set_var("KEVI_PASSWORD", "svcpass");
+    let store = Arc::new(FileByteStore::new(path.clone()));
+    let codec = Arc::new(RonCodec);
+    let resolver = Arc::new(CachedKeyResolver::new(path.clone()));
+    let service = Arc::new(VaultService::new(store, codec, resolver));
+
+    let mut app = App::new(vec![]); // No entries
+    assert_eq!(app.visible_labels().len(), 0);
+
+    app.handle_key_event(KeyCode::Down, 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.selected, 0); // No crash, stays at 0
+
+    app.handle_key_event(KeyCode::Char('l'), 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.view, View::Details); // Allow details on empty?
+
+    app.enter_search();
+    assert_eq!(app.mode, Mode::Search);
+    app.handle_key_event(KeyCode::Char('t'), 15, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.visible_labels().len(), 0); // Filter on empty stays empty
 }

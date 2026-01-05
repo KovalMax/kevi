@@ -49,7 +49,7 @@ pub fn render_list(f: &mut Frame, app: &App) {
     f.render_widget(list, chunks[2]);
 
     let footer_text = app.toast_message().unwrap_or(
-        "q=quit  j/k or arrows=move  (> marks selection)  Enter=copy password  u=copy user",
+        "q=quit | j/k or up/down | l/right=details | a=add | Enter=copy password | u=copy user",
     );
     let footer = Paragraph::new(footer_text).style(theme.toast_style());
     f.render_widget(footer, chunks[3]);

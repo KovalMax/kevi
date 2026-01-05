@@ -83,6 +83,6 @@ pub fn render_form(f: &mut Frame, app: &App) {
     f.render_widget(password_para, inner[2]);
     f.render_widget(notes_para, inner[3]);
 
-    let footer = "Esc=cancel  Tab/Shift-Tab=switch  Enter=submit";
+    let footer = "Esc=cancel | Tab/Shift-Tab=switch | Enter=submit";
     f.render_widget(Paragraph::new(footer).style(theme.toast_style()), chunks[2]);
 }
