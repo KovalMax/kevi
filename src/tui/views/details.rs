@@ -46,7 +46,7 @@ pub fn render_details(f: &mut Frame, app: &App) {
 
     let footer = match app.view {
         View::Details => {
-            "q=back  Enter=copy password  u=copy user  v=toggle password  e=edit  d=delete"
+            "q/left=back | Enter=copy password | u=copy user | v=toggle password | e=edit | d=delete"
         }
         _ => "",
     };

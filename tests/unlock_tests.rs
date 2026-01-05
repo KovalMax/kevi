@@ -7,6 +7,7 @@ use kevi::session_management::session::load;
 use kevi::vault::codec::RonCodec;
 use kevi::vault::handlers::Vault;
 use kevi::vault::models::{VaultData, VaultEntry};
+use kevi::vault::persistence::save_vault_file;
 use kevi::vault::service::VaultService;
 use secrecy::SecretString;
 use std::env;
@@ -53,13 +54,12 @@ async fn vault_handle_unlock_and_lock_manage_session() {
     let path = dir.path().join("vault.ron");
     // Initialize an encrypted vault file (empty) so header exists
     {
-        use kevi::vault::persistence::save_vault_file;
-        let entries = kevi::vault::models::VaultData {
+        let entries = VaultData {
             entries: Vec::new(),
             otps: Vec::new(),
         };
         // Ensure password available
-        std::env::set_var("KEVI_PASSWORD", "pw");
+        env::set_var("KEVI_PASSWORD", "pw");
         save_vault_file(&entries, &path, "pw").expect("init empty vault");
     }
     let config = Config::create(Some(path.clone()), None).unwrap();
