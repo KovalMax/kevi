@@ -83,7 +83,7 @@ jobs:
 
   coverage:
     name: Code coverage (cargo-llvm-cov)
-    runs-on: ubuntu-24.04-arm
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v6
