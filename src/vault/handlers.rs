@@ -1,4 +1,4 @@
-use crate::config::app_config::Config;
+use crate::config::app_config::{Config, Defaults};
 use crate::cryptography::generator::{
     estimate_bits_char_mode, estimate_bits_passphrase, strength_label, DefaultPasswordGenerator,
     SystemRng,
@@ -8,6 +8,8 @@ use crate::cryptography::primitives::{
     KDF_ARGON2ID,
 };
 use crate::cryptography::wordlist::WORDS;
+use crate::domain::{EntryLabel, VaultResult};
+use crate::error::KeviError;
 use crate::filesystem::clipboard::{
     copy_with_ttl, environment_warning, ttl_seconds, ClipboardEngine, SystemClipboardEngine,
 };
@@ -21,7 +23,6 @@ use crate::vault::models::{AddOptions, VaultData, VaultEntry};
 use crate::vault::persistence::save_vault_file;
 use crate::vault::ports::{ByteStore, GenPolicy, KeyResolver, PasswordGenerator, Rng, VaultCodec};
 use crate::vault::service::VaultService;
-use anyhow::{anyhow, Result};
 use inquire::{Confirm, Password, Text};
 use secrecy::{ExposeSecret, SecretBox, SecretString};
 use serde_json::json;
@@ -54,27 +55,35 @@ pub struct Vault<'a> {
     service: Arc<VaultService>,
 }
 
+fn join_error(context: &str) -> KeviError {
+    KeviError::vault(format!("{context} (task join error)"))
+}
+
+fn vault_error<E: Display>(context: &str, err: E) -> KeviError {
+    KeviError::vault(format!("{context} - {err}"))
+}
+
 impl<'a> Vault<'a> {
     pub fn create(config: &'a Config) -> Self {
         // Compose default adapters
-        let backups = config.backups.unwrap_or(2);
-        let store: Arc<dyn ByteStore> = Arc::new(FileByteStore::new_with_backups(
-            config.vault_path.clone(),
-            backups,
-        ));
+        let backups = config.backups.unwrap_or(Defaults::BACKUPS);
+        let vault_path: std::path::PathBuf = config.vault_path.clone().into();
+        let store: Arc<dyn ByteStore> =
+            Arc::new(FileByteStore::new_with_backups(vault_path.clone(), backups));
         let codec: Arc<dyn VaultCodec> = Arc::new(RonCodec);
         let key_resolver: Arc<dyn KeyResolver> =
-            Arc::new(CachedKeyResolver::new(config.vault_path.clone()));
+            Arc::new(CachedKeyResolver::new(vault_path.clone()));
         let service = Arc::new(VaultService::new(store, codec, key_resolver));
 
         Vault { config, service }
     }
 
-    pub async fn handle_header(&self) -> Result<()> {
-        let path = self.config.vault_path.clone();
+    pub async fn handle_header(&self) -> VaultResult<()> {
+        let path: std::path::PathBuf = self.config.vault_path.clone().into();
         let bytes = spawn_blocking(move || fs::read(&path))
             .await
-            .map_err(|_| anyhow!("task join error"))??;
+            .map_err(|_| join_error("reading vault file"))?
+            .map_err(|e| vault_error("failed to read vault file", e))?;
         match parse_kevi_header(&bytes) {
             Ok((hdr, _off)) => {
                 let kdf = match hdr.kdf_id {
@@ -104,7 +113,7 @@ impl<'a> Vault<'a> {
                 println!("  nonce: {nonce_hex}");
                 Ok(())
             }
-            Err(e) => Err(anyhow!("Failed to parse header: {}", e)),
+            Err(e) => Err(KeviError::from(e)),
         }
     }
 
@@ -116,22 +125,26 @@ impl<'a> Vault<'a> {
         ttl_override: Option<u64>,
         echo: bool,
         once: bool,
-    ) -> Result<()> {
+    ) -> VaultResult<()> {
         // Load entries, optionally bypassing session cache for this call using a temp resolver
         let vault = if once {
+            let backups = self.config.backups.unwrap_or(Defaults::BACKUPS);
+            let vault_path: std::path::PathBuf = self.config.vault_path.clone().into();
             let store: Arc<dyn ByteStore> =
-                Arc::new(FileByteStore::new(self.config.vault_path.clone()));
+                Arc::new(FileByteStore::new_with_backups(vault_path.clone(), backups));
             let codec: Arc<dyn VaultCodec> = Arc::new(RonCodec);
             let resolver: Arc<dyn KeyResolver> = Arc::new(BypassKeyResolver::new());
             let svc = Arc::new(VaultService::new(store, codec, resolver));
             spawn_blocking(move || svc.load())
                 .await
-                .map_err(|_| anyhow!("task join error"))??
+                .map_err(|_| join_error("loading vault"))?
+                .map_err(|e| vault_error("failed to load vault", e))?
         } else {
             let svc = self.service.clone();
             spawn_blocking(move || svc.load())
                 .await
-                .map_err(|_| anyhow!("task join error"))??
+                .map_err(|_| join_error("loading vault"))?
+                .map_err(|e| vault_error("failed to load vault", e))?
         };
         let entry = match vault.entries.iter().find(|e| e.label == key) {
             Some(e) => e,
@@ -195,11 +208,12 @@ impl<'a> Vault<'a> {
         Ok(())
     }
 
-    pub async fn handle_show(&self, key: &str, reveal_password: bool) -> Result<()> {
+    pub async fn handle_show(&self, key: &str, reveal_password: bool) -> VaultResult<()> {
         let svc = self.service.clone();
         let data = spawn_blocking(move || svc.load())
             .await
-            .map_err(|_| anyhow!("task join error"))??;
+            .map_err(|_| join_error("loading vault"))?
+            .map_err(|e| vault_error("failed to load vault", e))?;
 
         if let Some(entry) = data.entries.iter().find(|e| e.label == key) {
             println!("Label:    {}", entry.label);
@@ -220,23 +234,24 @@ impl<'a> Vault<'a> {
                 println!("Password: ******** (use --reveal-password to show)");
             }
         } else {
-            anyhow::bail!("entry '{}' not found", key);
+            return Err(KeviError::vault(format!("entry '{key}' not found")));
         }
         Ok(())
     }
 
-    pub async fn handle_add(&self, opts: AddOptions) -> Result<()> {
+    pub async fn handle_add(&self, opts: AddOptions) -> VaultResult<()> {
         // Load existing entries first
         let svc_load = self.service.clone();
         let mut vault = spawn_blocking(move || svc_load.load())
             .await
-            .map_err(|_| anyhow!("task join error"))??;
+            .map_err(|_| join_error("loading vault"))?
+            .map_err(|e| vault_error("failed to load vault", e))?;
 
         // Determine label/username/notes (use provided flags or prompt)
         let label = if let Some(l) = opts.label.clone() {
             l
         } else {
-            Text::new("Label (key)").prompt()?
+            EntryLabel::from(Text::new("Label (key)").prompt()?)
         };
         if vault.entries.iter().any(|e| e.label == label) {
             println!("❌ Entry with label '{label}' already exists.");
@@ -323,18 +338,20 @@ impl<'a> Vault<'a> {
         let svc_save = self.service.clone();
         spawn_blocking(move || svc_save.save(&vault))
             .await
-            .map_err(|_| anyhow!("task join error"))??;
+            .map_err(|_| join_error("saving vault"))?
+            .map_err(|e| vault_error("failed to save vault", e))?;
         println!("✅ Entry saved.");
 
         Ok(())
     }
 
-    pub async fn handle_rm(&self, key: &str, yes: bool) -> Result<()> {
+    pub async fn handle_rm(&self, key: &str, yes: bool) -> VaultResult<()> {
         // Load to check existence and optionally confirm
         let svc_load = self.service.clone();
         let data = spawn_blocking(move || svc_load.load())
             .await
-            .map_err(|_| anyhow!("task join error"))??;
+            .map_err(|_| join_error("loading vault"))?
+            .map_err(|e| vault_error("failed to load vault", e))?;
         if !data.entries.iter().any(|e| e.label == key) {
             println!("❌ No entry found with key '{key}'");
             return Ok(());
@@ -353,7 +370,8 @@ impl<'a> Vault<'a> {
         let key_owned = key.to_string();
         let removed = spawn_blocking(move || svc_rm.remove_entry(&key_owned))
             .await
-            .map_err(|_| anyhow!("task join error"))??;
+            .map_err(|_| join_error("removing entry"))?
+            .map_err(|e| vault_error("failed to remove entry", e))?;
         if removed {
             println!("🗑️ Entry '{key}' removed.");
         } else {
@@ -368,17 +386,18 @@ impl<'a> Vault<'a> {
         query: Option<String>,
         show_users: bool,
         json_mode: bool,
-    ) -> Result<()> {
+    ) -> VaultResult<()> {
         let svc = self.service.clone();
         let mut data = spawn_blocking(move || svc.load())
             .await
-            .map_err(|_| anyhow!("task join error"))??;
+            .map_err(|_| join_error("loading vault"))?
+            .map_err(|e| vault_error("failed to load vault", e))?;
 
         // Filter by query (case-insensitive) on a label
         if let Some(q) = query {
             let ql = q.to_lowercase();
             data.entries
-                .retain(|e| e.label.to_lowercase().contains(&ql));
+                .retain(|e| e.label.as_str().to_lowercase().contains(&ql));
         }
 
         if json_mode {
@@ -425,12 +444,12 @@ impl<'a> Vault<'a> {
         Ok(())
     }
 
-    pub async fn handle_init(&self, path_override: Option<&str>) -> Result<()> {
+    pub async fn handle_init(&self, path_override: Option<&str>) -> VaultResult<()> {
         // Decide a path
         let target_path = if let Some(p) = path_override {
             std::path::PathBuf::from(p)
         } else {
-            self.config.vault_path.clone()
+            self.config.vault_path.clone().into()
         };
 
         // Get password (env or prompt twice)
@@ -445,7 +464,7 @@ impl<'a> Vault<'a> {
                 .without_confirmation()
                 .prompt()?;
             if pw1 != pw2 {
-                return Err(anyhow::anyhow!("Passwords do not match"));
+                return Err(KeviError::vault("Passwords do not match"));
             }
             pw1
         };
@@ -459,7 +478,8 @@ impl<'a> Vault<'a> {
         let master_clone = master.clone();
         spawn_blocking(move || save_vault_file(&empty, &path_clone, &master_clone))
             .await
-            .map_err(|_| anyhow!("task join error"))??;
+            .map_err(|_| join_error("initializing vault"))?
+            .map_err(|e| vault_error("failed to initialize vault", e))?;
         println!(
             "✅ Initialized encrypted vault at {}",
             target_path.display()
@@ -467,7 +487,7 @@ impl<'a> Vault<'a> {
         Ok(())
     }
 
-    pub async fn handle_unlock(&self, ttl_override: Option<u64>) -> Result<()> {
+    pub async fn handle_unlock(&self, ttl_override: Option<u64>) -> VaultResult<()> {
         // TTL precedence
         let ttl_secs = ttl_override
             .or_else(|| {
@@ -479,11 +499,13 @@ impl<'a> Vault<'a> {
         let ttl = Duration::from_secs(ttl_secs);
 
         // Read vault header (must exist)
-        let path = self.config.vault_path.clone();
+        let path: std::path::PathBuf = self.config.vault_path.clone().into();
         let bytes = spawn_blocking(move || fs::read(&path))
             .await
-            .map_err(|_| anyhow!("task join error"))??;
-        let (hdr, _off) = parse_kevi_header(&bytes).map_err(|e| anyhow!("invalid header: {e}"))?;
+            .map_err(|_| join_error("reading vault file"))?
+            .map_err(|e| vault_error("failed to read vault file", e))?;
+        let (hdr, _off) =
+            parse_kevi_header(&bytes).map_err(|e| vault_error("invalid header", e))?;
 
         // Get passphrase
         let password = if let Ok(pw) = env::var("KEVI_PASSWORD") {
@@ -501,22 +523,25 @@ impl<'a> Vault<'a> {
             hdr.m_cost_kib,
             hdr.t_cost,
             hdr.p_lanes,
-        )?;
+        )
+        .map_err(|e| vault_error("failed to derive key", e))?;
         let fp = header_fingerprint_excluding_nonce(&hdr);
         let dk_path = dk_session_file_for(&self.config.vault_path);
         let key_vec = SecretBox::new(Box::new(key_arr.to_vec()));
         spawn_blocking(move || save_derived_key_session(&dk_path, &fp, &key_vec, ttl))
             .await
-            .map_err(|_| anyhow!("task join error"))??;
+            .map_err(|_| join_error("saving derived key session"))?
+            .map_err(|e| vault_error("failed to save derived key session", e))?;
         println!("🔓 Unlocked for {ttl_secs}s (derived key cached).");
         Ok(())
     }
 
-    pub async fn handle_lock(&self) -> Result<()> {
+    pub async fn handle_lock(&self) -> VaultResult<()> {
         let dk_path = dk_session_file_for(&self.config.vault_path);
         spawn_blocking(move || clear(&dk_path))
             .await
-            .map_err(|_| anyhow!("task join error"))??;
+            .map_err(|_| join_error("clearing derived key session"))?
+            .map_err(|e| vault_error("failed to clear derived key session", e))?;
         println!("🔒 Locked (derived-key session cleared).");
         Ok(())
     }

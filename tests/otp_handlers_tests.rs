@@ -1,6 +1,8 @@
 use anyhow::Result;
 use kevi::config::app_config::Config;
 use kevi::cryptography::primitives::{default_params, derive_key_argon2id, KeviHeader, SALT_LEN};
+use kevi::domain::{VaultPath, VaultResult};
+use kevi::error::KeviError;
 use kevi::otp::handlers::{
     OtpAddOptions, OtpGetOptions, OtpHandlers, OtpListOptions, OtpRemoveOptions,
 };
@@ -29,11 +31,11 @@ impl MemoryStore {
 }
 
 impl ByteStore for MemoryStore {
-    fn read(&self) -> Result<Vec<u8>> {
+    fn read(&self) -> VaultResult<Vec<u8>> {
         Ok(self.buf.lock().unwrap().clone())
     }
 
-    fn write(&self, bytes: &[u8]) -> Result<()> {
+    fn write(&self, bytes: &[u8]) -> VaultResult<()> {
         *self.buf.lock().unwrap() = bytes.to_vec();
         Ok(())
     }
@@ -43,17 +45,17 @@ impl ByteStore for MemoryStore {
 struct RonCodec;
 
 impl VaultCodec for RonCodec {
-    fn encode(&self, data: &VaultData) -> Result<Vec<u8>> {
-        let s = ron::to_string(data)?;
+    fn encode(&self, data: &VaultData) -> VaultResult<Vec<u8>> {
+        let s = ron::to_string(data).map_err(|e| KeviError::vault(e.to_string()))?;
         Ok(s.into_bytes())
     }
 
-    fn decode(&self, data: &[u8]) -> Result<VaultData> {
+    fn decode(&self, data: &[u8]) -> VaultResult<VaultData> {
         if data.is_empty() {
             return Ok(VaultData::default());
         }
-        let s = std::str::from_utf8(data)?;
-        Ok(ron::from_str::<VaultData>(s)?)
+        let s = std::str::from_utf8(data).map_err(|e| KeviError::vault(e.to_string()))?;
+        ron::from_str::<VaultData>(s).map_err(|e| KeviError::vault(e.to_string()))
     }
 }
 
@@ -91,7 +93,7 @@ impl KeyResolver for FixedKeyResolver {
 
 fn test_config() -> Config {
     Config {
-        vault_path: PathBuf::from("test-vault.ron"),
+        vault_path: VaultPath::from(PathBuf::from("test-vault.ron")),
         clipboard_ttl: Some(3),
         backups: Some(0),
         generator_length: None,

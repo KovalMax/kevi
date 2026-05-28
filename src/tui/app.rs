@@ -132,7 +132,7 @@ impl App {
     pub fn visible_labels(&self) -> Vec<String> {
         self.filtered
             .iter()
-            .map(|&i| self.entries[i].label.clone())
+            .map(|&i| self.entries[i].label.to_string())
             .collect()
     }
 
@@ -148,7 +148,7 @@ impl App {
         } else {
             let q = self.filter.to_lowercase();
             for (i, e) in self.entries.iter().enumerate() {
-                if e.label.to_lowercase().contains(&q) {
+                if e.label.as_str().to_lowercase().contains(&q) {
                     self.filtered.push(i);
                 }
             }
@@ -185,7 +185,7 @@ impl App {
         if self.filtered.is_empty() {
             return None;
         }
-        Some(self.entries[self.filtered[self.selected]].label.clone())
+        Some(self.entries[self.filtered[self.selected]].label.to_string())
     }
 
     // View navigation
@@ -213,7 +213,7 @@ impl App {
         self.form_field = FormField::Label;
         if let Some(idx) = self.filtered.get(self.selected).cloned() {
             let e = &self.entries[idx];
-            self.form_label = e.label.clone();
+            self.form_label = e.label.to_string();
             self.form_user = e
                 .username
                 .as_ref()
@@ -221,7 +221,7 @@ impl App {
                 .unwrap_or_default();
             self.form_password = e.password.expose_secret().to_string();
             self.form_notes = e.notes.clone().unwrap_or_default();
-            self.form_original_label = e.label.clone();
+            self.form_original_label = e.label.to_string();
         }
     }
 
@@ -419,9 +419,11 @@ impl App {
                                 } else {
                                     Some(self.form_notes.trim().to_string())
                                 };
-                                let label_for_save = label.clone();
+                                let label_for_save = crate::domain::EntryLabel::from(label.clone());
                                 let form_pw = self.form_password.clone();
-                                let original_label = self.form_original_label.clone();
+                                let original_label = crate::domain::EntryLabel::from(
+                                    self.form_original_label.clone(),
+                                );
                                 let svc = service.clone();
                                 if is_add {
                                     let _ = spawn_blocking(move || {

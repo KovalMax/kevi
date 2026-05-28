@@ -34,6 +34,11 @@ pub fn atomic_write_secure(path: &Path, bytes: &[u8]) -> Result<()> {
     }
 
     fs::rename(&tmp_path, path).context("Failed to replace vault file atomically")?;
+    if let Some(parent) = path.parent() {
+        if let Ok(dir) = File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
     Ok(())
 }
 

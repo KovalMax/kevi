@@ -1,4 +1,5 @@
-use crate::config::app_config::Config;
+use crate::config::app_config::{Config, Defaults};
+use crate::domain::OtpName;
 use crate::filesystem::clipboard::{
     copy_with_ttl, environment_warning, ttl_seconds, ClipboardEngine, SystemClipboardEngine,
 };
@@ -24,7 +25,7 @@ pub struct OtpHandlers<'a> {
 
 #[derive(Debug, Clone)]
 pub struct OtpAddOptions {
-    pub name: String,
+    pub name: OtpName,
     pub secret: Option<String>,
     pub from_uri: Option<String>,
     pub issuer: Option<String>,
@@ -38,7 +39,7 @@ pub struct OtpAddOptions {
 
 #[derive(Debug, Clone)]
 pub struct OtpGetOptions {
-    pub name: String,
+    pub name: OtpName,
     pub no_copy: bool,
     pub echo: bool,
     pub at: Option<u64>,
@@ -54,7 +55,7 @@ pub struct OtpListOptions {
 
 #[derive(Debug, Clone)]
 pub struct OtpRemoveOptions {
-    pub name: String,
+    pub name: OtpName,
     pub yes: bool,
 }
 
@@ -64,8 +65,10 @@ impl<'a> OtpHandlers<'a> {
     }
 
     fn service_once(&self) -> Arc<VaultService> {
+        let backups = self.config.backups.unwrap_or(Defaults::BACKUPS);
+        let vault_path: std::path::PathBuf = self.config.vault_path.clone().into();
         let store: Arc<dyn ByteStore> =
-            Arc::new(FileByteStore::new(self.config.vault_path.clone()));
+            Arc::new(FileByteStore::new_with_backups(vault_path, backups));
         let codec: Arc<dyn VaultCodec> = Arc::new(RonCodec);
         let resolver: Arc<dyn KeyResolver> = Arc::new(BypassKeyResolver::new());
         Arc::new(VaultService::new(store, codec, resolver))
@@ -193,7 +196,8 @@ impl<'a> OtpHandlers<'a> {
 
         if let Some(q) = opts.query.as_ref() {
             let ql = q.to_lowercase();
-            data.otps.retain(|o| o.name.to_lowercase().contains(&ql));
+            data.otps
+                .retain(|o| o.name.as_str().to_lowercase().contains(&ql));
         }
 
         if opts.json {

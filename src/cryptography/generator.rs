@@ -1,17 +1,18 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use ring::rand::{SecureRandom, SystemRandom};
 use std::sync::Arc;
 
 use crate::cryptography::wordlist::WORDS;
+use crate::error::KeviError;
 use crate::vault::ports::{GenPolicy, PasswordGenerator, Rng};
 
 pub struct SystemRng;
 
 impl Rng for SystemRng {
-    fn fill(&self, bytes: &mut [u8]) -> Result<()> {
+    fn fill(&self, bytes: &mut [u8]) -> Result<(), KeviError> {
         let rng = SystemRandom::new();
         rng.fill(bytes)
-            .map_err(|_| anyhow!("failed to obtain system randomness"))
+            .map_err(|_| KeviError::generator("failed to obtain system randomness"))
     }
 }
 
@@ -28,14 +29,13 @@ impl DefaultPasswordGenerator {
         }
     }
 
-    #[cfg(test)]
     pub fn new_with_wordlist(rng: Arc<dyn Rng>, wordlist: &'static [&'static str]) -> Self {
         Self { rng, wordlist }
     }
 }
 
 impl PasswordGenerator for DefaultPasswordGenerator {
-    fn generate(&self, policy: &GenPolicy) -> Result<String> {
+    fn generate(&self, policy: &GenPolicy) -> Result<String, KeviError> {
         if policy.passphrase {
             return generate_passphrase(&*self.rng, self.wordlist, policy.words, &policy.sep);
         }
@@ -56,9 +56,9 @@ fn filter_ambiguous(mut v: Vec<u8>) -> Vec<u8> {
     v
 }
 
-fn uniform_index(rng: &dyn Rng, len: usize) -> Result<usize> {
+fn uniform_index(rng: &dyn Rng, len: usize) -> Result<usize, KeviError> {
     if len == 0 {
-        return Err(anyhow!("empty pool"));
+        return Err(KeviError::generator("empty pool"));
     }
     // Rejection sampling on u32 space
     let n = len as u32;
@@ -73,7 +73,7 @@ fn uniform_index(rng: &dyn Rng, len: usize) -> Result<usize> {
     }
 }
 
-fn fy_shuffle(rng: &dyn Rng, data: &mut [u8]) -> Result<()> {
+fn fy_shuffle(rng: &dyn Rng, data: &mut [u8]) -> Result<(), KeviError> {
     if data.len() <= 1 {
         return Ok(());
     }
@@ -84,7 +84,7 @@ fn fy_shuffle(rng: &dyn Rng, data: &mut [u8]) -> Result<()> {
     Ok(())
 }
 
-fn generate_chars(rng: &dyn Rng, policy: &GenPolicy) -> Result<String> {
+fn generate_chars(rng: &dyn Rng, policy: &GenPolicy) -> Result<String, KeviError> {
     let mut classes: Vec<Vec<u8>> = Vec::new();
     if policy.lower {
         classes.push(LOWER.to_vec());
@@ -99,7 +99,7 @@ fn generate_chars(rng: &dyn Rng, policy: &GenPolicy) -> Result<String> {
         classes.push(SYMBOLS.to_vec());
     }
     if classes.is_empty() {
-        return Err(anyhow!("No character classes selected"));
+        return Err(KeviError::generator("No character classes selected"));
     }
     if policy.avoid_ambiguous {
         for cls in &mut classes {
@@ -108,14 +108,16 @@ fn generate_chars(rng: &dyn Rng, policy: &GenPolicy) -> Result<String> {
     }
     // Ensure all classes are non-empty after filtering
     if classes.iter().any(|c| c.is_empty()) {
-        return Err(anyhow!(
-            "Selected classes empty after filtering (too restrictive)"
+        return Err(KeviError::generator(
+            "Selected classes empty after filtering (too restrictive)",
         ));
     }
 
     let need = policy.length as usize;
     if need < classes.len() {
-        return Err(anyhow!("Length must be >= number of selected classes"));
+        return Err(KeviError::generator(
+            "Length must be >= number of selected classes",
+        ));
     }
 
     // Pick one from each class first
@@ -149,9 +151,9 @@ fn generate_passphrase(
     wordlist: &'static [&'static str],
     words: u16,
     sep: &str,
-) -> Result<String> {
+) -> Result<String, KeviError> {
     if wordlist.is_empty() {
-        return Err(anyhow!("wordlist empty"));
+        return Err(KeviError::generator("wordlist empty"));
     }
     let count = words.max(1) as usize;
     let mut parts: Vec<&'static str> = Vec::with_capacity(count);

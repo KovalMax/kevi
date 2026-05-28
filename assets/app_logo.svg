@@ -1,0 +1,14 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <!-- Background: Terminal Black -->
+    <rect width="200" height="200" rx="40" fill="#0F172A"/>
+
+    <!-- Lock Shackle: Tech Grey -->
+    <path d="M70 80 V 60 A 30 30 0 0 1 130 60 V 80" stroke="#94A3B8" stroke-width="12" fill="none" stroke-linecap="round"/>
+
+    <!-- Lock Body / Terminal Window -->
+    <rect x="50" y="80" width="100" height="80" rx="10" fill="#1E293B" stroke="#334155" stroke-width="4"/>
+
+    <!-- Terminal Prompt Symbol: Green -->
+    <path d="M75 110 L 90 120 L 75 130" stroke="#22C55E" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="100" y1="130" x2="125" y2="130" stroke="#22C55E" stroke-width="6" stroke-linecap="round"/>
+</svg>

@@ -1,12 +1,13 @@
 use crate::cryptography::types::secret_string;
 use crate::cryptography::types::secret_string_option;
+use crate::domain::EntryLabel;
 use crate::otp::models::OtpEntry;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VaultEntry {
-    pub label: String,
+    pub label: EntryLabel,
     #[serde(default, with = "secret_string_option")]
     pub username: Option<SecretString>,
     #[serde(with = "secret_string")]
@@ -33,7 +34,7 @@ pub struct AddOptions {
     pub passphrase: bool,
     pub words: Option<u16>,
     pub sep: Option<String>,
-    pub label: Option<String>,
+    pub label: Option<EntryLabel>,
     pub user: Option<String>,
     pub notes: Option<String>,
 }

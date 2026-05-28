@@ -4,7 +4,7 @@ use kevi::otp::parser::parse_otp_entry;
 
 fn make_otp_entry(uri: Option<String>, secret: Option<String>) -> OtpAddOptions {
     OtpAddOptions {
-        name: "demo".to_string(),
+        name: "demo".into(),
         secret,
         from_uri: uri,
         issuer: Some("demo".to_string()),

@@ -49,7 +49,7 @@ fn header_bad_magic_fails() {
 
     run_header(&path).failure().stderr(
         predicate::str::contains("Failed to parse header")
-            .or(predicate::str::contains("invalid header")),
+            .or(predicate::str::contains("ciphertext too short for header")),
     );
 }
 

@@ -2,8 +2,10 @@ use crate::cli::clap_models::{
     Cli, Commands, GetFieldArg, OtpAlgorithmArg, OtpCommand, ProfileCommand,
 };
 use crate::config::app_config::{
-    load_file_config_with_path, save_file_config, Config, FileProfileConfig,
+    load_file_config_with_path, save_file_config, Config, Defaults, FileProfileConfig,
 };
+use crate::domain::{EntryLabel, OtpName};
+use crate::error::KeviError;
 use crate::filesystem::store::FileByteStore;
 use crate::otp::handlers::{
     OtpAddOptions, OtpGetOptions, OtpHandlers, OtpListOptions, OtpRemoveOptions,
@@ -20,17 +22,23 @@ use clap::Parser;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-pub async fn run() -> anyhow::Result<()> {
+fn load_config(path: Option<PathBuf>, profile: Option<String>) -> Result<Config, KeviError> {
+    Config::create(path, profile).map_err(KeviError::from)
+}
+
+pub async fn run() -> Result<(), KeviError> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Init { path } => {
-            let config = Config::create(path.map(PathBuf::from), cli.profile.clone())?;
+            let config = load_config(path.map(PathBuf::from), cli.profile.clone())?;
             let vault = Vault::create(&config);
-            vault.handle_init(config.vault_path.to_str()).await?;
+            vault
+                .handle_init(config.vault_path.as_path().to_str())
+                .await?;
         }
         Commands::Header { path } => {
-            let config = Config::create(path.map(PathBuf::from), cli.profile.clone())?;
+            let config = load_config(path.map(PathBuf::from), cli.profile.clone())?;
             let vault = Vault::create(&config);
             vault.handle_header().await?;
         }
@@ -39,7 +47,7 @@ pub async fn run() -> anyhow::Result<()> {
             reveal_password,
             path,
         } => {
-            let config = Config::create(path.map(PathBuf::from), cli.profile.clone())?;
+            let config = load_config(path.map(PathBuf::from), cli.profile.clone())?;
             let vault = Vault::create(&config);
             vault.handle_show(&key, reveal_password).await?;
         }
@@ -52,7 +60,7 @@ pub async fn run() -> anyhow::Result<()> {
             ttl,
             once,
         } => {
-            let config = Config::create(path.map(PathBuf::from), cli.profile.clone())?;
+            let config = load_config(path.map(PathBuf::from), cli.profile.clone())?;
             let vault = Vault::create(&config);
             let field_core = match field {
                 GetFieldArg::Password => GetField::Password,
@@ -79,7 +87,7 @@ pub async fn run() -> anyhow::Result<()> {
             user,
             notes,
         } => {
-            let config = Config::create(path.map(PathBuf::from), cli.profile.clone())?;
+            let config = load_config(path.map(PathBuf::from), cli.profile.clone())?;
             let vault = Vault::create(&config);
             let opts = AddOptions {
                 generate,
@@ -92,14 +100,14 @@ pub async fn run() -> anyhow::Result<()> {
                 passphrase,
                 words,
                 sep,
-                label,
+                label: label.map(EntryLabel::from),
                 user,
                 notes,
             };
             vault.handle_add(opts).await?;
         }
         Commands::Rm { key, path, yes } => {
-            let config = Config::create(path.map(PathBuf::from), cli.profile.clone())?;
+            let config = load_config(path.map(PathBuf::from), cli.profile.clone())?;
             let vault = Vault::create(&config);
             vault.handle_rm(&key, yes).await?;
         }
@@ -109,29 +117,35 @@ pub async fn run() -> anyhow::Result<()> {
             query,
             json,
         } => {
-            let config = Config::create(path.map(PathBuf::from), cli.profile.clone())?;
+            let config = load_config(path.map(PathBuf::from), cli.profile.clone())?;
             let vault = Vault::create(&config);
             vault.handle_list(query, show_users, json).await?;
         }
         Commands::Unlock { path, ttl } => {
-            let config = Config::create(path.map(PathBuf::from), cli.profile.clone())?;
+            let config = load_config(path.map(PathBuf::from), cli.profile.clone())?;
             let vault = Vault::create(&config);
             vault.handle_unlock(ttl).await?;
         }
         Commands::Lock { path } => {
-            let config = Config::create(path.map(PathBuf::from), cli.profile.clone())?;
+            let config = load_config(path.map(PathBuf::from), cli.profile.clone())?;
             let vault = Vault::create(&config);
             vault.handle_lock().await?;
         }
         Commands::Tui { path } => {
-            let config = Config::create(path.map(PathBuf::from), cli.profile.clone())?;
-            tui::launch(&config).await?;
+            let config = load_config(path.map(PathBuf::from), cli.profile.clone())?;
+            tui::launch(&config)
+                .await
+                .map_err(|e| KeviError::tui(e.to_string()))?;
         }
         Commands::Profile(cmd) => {
-            handle_profile_commands(cmd).await?;
+            handle_profile_commands(cmd)
+                .await
+                .map_err(|e| KeviError::cli(e.to_string()))?;
         }
         Commands::Otp(cmd) => {
-            handle_otp_commands(cmd, cli.profile.clone()).await?;
+            handle_otp_commands(cmd, cli.profile.clone())
+                .await
+                .map_err(|e| KeviError::vault(e.to_string()))?;
         }
     }
 
@@ -246,7 +260,7 @@ async fn handle_otp_commands(cmd: OtpCommand, profile: Option<String>) -> anyhow
                 create_config_and_vault_service(path.map(PathBuf::from), profile.clone())?;
             let handlers = OtpHandlers::create(&config, service);
             let opts = OtpAddOptions {
-                name,
+                name: OtpName::from(name),
                 secret,
                 from_uri,
                 issuer,
@@ -272,7 +286,7 @@ async fn handle_otp_commands(cmd: OtpCommand, profile: Option<String>) -> anyhow
                 create_config_and_vault_service(path.map(PathBuf::from), profile.clone())?;
             let handlers = OtpHandlers::create(&config, service);
             let opts = OtpGetOptions {
-                name,
+                name: OtpName::from(name),
                 no_copy,
                 echo,
                 at,
@@ -292,7 +306,10 @@ async fn handle_otp_commands(cmd: OtpCommand, profile: Option<String>) -> anyhow
             let (config, service) =
                 create_config_and_vault_service(path.map(PathBuf::from), profile.clone())?;
             let handlers = OtpHandlers::create(&config, service);
-            let opts = OtpRemoveOptions { name, yes };
+            let opts = OtpRemoveOptions {
+                name: OtpName::from(name),
+                yes,
+            };
             handlers.handle_remove(opts).await
         }
     }
@@ -301,16 +318,14 @@ async fn handle_otp_commands(cmd: OtpCommand, profile: Option<String>) -> anyhow
 fn create_config_and_vault_service(
     path: Option<PathBuf>,
     profile: Option<String>,
-) -> anyhow::Result<(Config, Arc<VaultService>)> {
-    let config = Config::create(path, profile.clone())?;
-    let backups = config.backups.unwrap_or(2);
-    let store: Arc<dyn ByteStore> = Arc::new(FileByteStore::new_with_backups(
-        config.vault_path.clone(),
-        backups,
-    ));
+) -> Result<(Config, Arc<VaultService>), KeviError> {
+    let config = load_config(path, profile)?;
+    let backups = config.backups.unwrap_or(Defaults::BACKUPS);
+    let vault_path: PathBuf = config.vault_path.clone().into();
+    let store: Arc<dyn ByteStore> =
+        Arc::new(FileByteStore::new_with_backups(vault_path.clone(), backups));
     let codec: Arc<dyn VaultCodec> = Arc::new(RonCodec);
-    let key_resolver: Arc<dyn KeyResolver> =
-        Arc::new(CachedKeyResolver::new(config.vault_path.clone()));
+    let key_resolver: Arc<dyn KeyResolver> = Arc::new(CachedKeyResolver::new(vault_path));
     let service = Arc::new(VaultService::new(store, codec, key_resolver));
 
     Ok((config, service))

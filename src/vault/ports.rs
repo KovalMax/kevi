@@ -2,21 +2,23 @@ use anyhow::Result;
 use secrecy::SecretBox;
 
 use crate::cryptography::primitives::KeviHeader;
+use crate::domain::VaultResult;
+use crate::error::KeviError;
 use crate::vault::models::VaultData;
 
 // Randomness provider for deterministic testing.
 pub trait Rng: Send + Sync {
-    fn fill(&self, bytes: &mut [u8]) -> Result<()>;
+    fn fill(&self, bytes: &mut [u8]) -> VaultResult<()>;
 }
 
 pub trait VaultCodec: Send + Sync {
-    fn encode(&self, data: &VaultData) -> Result<Vec<u8>>;
-    fn decode(&self, data: &[u8]) -> Result<VaultData>;
+    fn encode(&self, data: &VaultData) -> VaultResult<Vec<u8>>;
+    fn decode(&self, data: &[u8]) -> VaultResult<VaultData>;
 }
 
 pub trait ByteStore: Send + Sync {
-    fn read(&self) -> Result<Vec<u8>>;
-    fn write(&self, bytes: &[u8]) -> Result<()>;
+    fn read(&self) -> VaultResult<Vec<u8>>;
+    fn write(&self, bytes: &[u8]) -> VaultResult<()>;
 }
 
 // Password generator policy and trait
@@ -51,7 +53,7 @@ impl Default for GenPolicy {
 }
 
 pub trait PasswordGenerator: Send + Sync {
-    fn generate(&self, policy: &GenPolicy) -> Result<String>;
+    fn generate(&self, policy: &GenPolicy) -> Result<String, KeviError>;
 }
 
 // ===== Derived-key cache resolver (PR13) =====

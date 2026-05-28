@@ -1,8 +1,23 @@
+//! Application configuration loading and precedence handling.
+//! Resolves vault paths, clipboard/backups/generator defaults from CLI/env/config/defaults.
+
+use crate::domain::{ProfileName, VaultPath};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use thiserror::Error;
+
+pub struct Defaults;
+
+impl Defaults {
+    pub const CLIPBOARD_TTL: Option<u64> = None;
+    pub const BACKUPS: usize = 2;
+    pub const GENERATOR_LENGTH: Option<u16> = None;
+    pub const GENERATOR_WORDS: Option<u16> = None;
+    pub const GENERATOR_SEP: Option<&'static str> = None;
+    pub const AVOID_AMBIGUOUS: Option<bool> = Some(false);
+}
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -35,7 +50,7 @@ pub struct FileProfileConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
-    pub vault_path: PathBuf,
+    pub vault_path: VaultPath,
     pub clipboard_ttl: Option<u64>,
     pub backups: Option<usize>,
     // Generator defaults (optional)
@@ -44,13 +59,13 @@ pub struct Config {
     pub generator_sep: Option<String>,
     pub avoid_ambiguous: Option<bool>,
 
-    pub default_profile: Option<String>,
-    pub profiles: HashMap<String, ProfileConfig>,
+    pub default_profile: Option<ProfileName>,
+    pub profiles: HashMap<ProfileName, ProfileConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProfileConfig {
-    pub vault_path: PathBuf,
+    pub vault_path: VaultPath,
 }
 
 impl Config {
@@ -65,28 +80,36 @@ impl Config {
         let clipboard_ttl = env::var("KEVI_CLIP_TTL")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
-            .or(file_cfg.clipboard_ttl);
+            .or(file_cfg.clipboard_ttl)
+            .or(Defaults::CLIPBOARD_TTL);
 
         // 4) Resolve backups precedence: env > config file > None (library default is 2)
         let backups = env::var("KEVI_BACKUPS")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
-            .or(file_cfg.backups);
+            .or(file_cfg.backups)
+            .or(Some(Defaults::BACKUPS));
 
         // 5) Generator defaults precedence: env > config file > None
         let gen_len = env::var("KEVI_GEN_LENGTH")
             .ok()
             .and_then(|s| s.parse::<u16>().ok())
-            .or(file_cfg.generator_length);
+            .or(file_cfg.generator_length)
+            .or(Defaults::GENERATOR_LENGTH);
         let gen_words = env::var("KEVI_GEN_WORDS")
             .ok()
             .and_then(|s| s.parse::<u16>().ok())
-            .or(file_cfg.generator_words);
-        let gen_sep = env::var("KEVI_GEN_SEP").ok().or(file_cfg.generator_sep);
+            .or(file_cfg.generator_words)
+            .or(Defaults::GENERATOR_WORDS);
+        let gen_sep = env::var("KEVI_GEN_SEP")
+            .ok()
+            .or(file_cfg.generator_sep)
+            .or_else(|| Defaults::GENERATOR_SEP.map(String::from));
         let avoid_amb = env::var("KEVI_AVOID_AMBIGUOUS")
             .ok()
             .and_then(|s| s.parse::<bool>().ok())
-            .or(file_cfg.avoid_ambiguous);
+            .or(file_cfg.avoid_ambiguous)
+            .or(Defaults::AVOID_AMBIGUOUS);
 
         let profiles = file_cfg
             .profiles
@@ -94,9 +117,9 @@ impl Config {
             .into_iter()
             .map(|(name, p)| {
                 (
-                    name,
+                    ProfileName::from(name),
                     ProfileConfig {
-                        vault_path: PathBuf::from(p.vault_path),
+                        vault_path: VaultPath::from(PathBuf::from(p.vault_path)),
                     },
                 )
             })
@@ -110,7 +133,7 @@ impl Config {
             generator_words: gen_words,
             generator_sep: gen_sep,
             avoid_ambiguous: avoid_amb,
-            default_profile: file_cfg.default_profile,
+            default_profile: file_cfg.default_profile.map(ProfileName::from),
             profiles,
         })
     }
@@ -120,35 +143,35 @@ fn resolve_vault_path(
     cli_path: Option<PathBuf>,
     cli_profile: Option<&str>,
     file_cfg: &FileConfig,
-) -> Result<PathBuf, ConfigError> {
+) -> Result<VaultPath, ConfigError> {
     if let Some(p) = cli_path {
-        return Ok(p);
+        return Ok(VaultPath::from(p));
     }
 
     if let Some(name) = cli_profile {
         if let Some(profiles) = file_cfg.profiles.as_ref() {
             if let Some(prof) = profiles.get(name) {
-                return Ok(PathBuf::from(&prof.vault_path));
+                return Ok(VaultPath::from(PathBuf::from(&prof.vault_path)));
             }
         }
         return Err(ConfigError::UnknownProfile(name.to_string()));
     }
 
     if let Ok(p) = env::var("KEVI_VAULT_PATH") {
-        return Ok(PathBuf::from(p));
+        return Ok(VaultPath::from(PathBuf::from(p)));
     }
 
     if let Some(default_name) = file_cfg.default_profile.as_deref() {
         if let Some(profs) = file_cfg.profiles.as_ref() {
             if let Some(prof) = profs.get(default_name) {
-                return Ok(PathBuf::from(&prof.vault_path));
+                return Ok(VaultPath::from(PathBuf::from(&prof.vault_path)));
             }
         }
         // If default_profile points to a missing profile, ignore it and fall through
     }
 
     if let Some(p) = file_cfg.vault_path.as_ref() {
-        return Ok(PathBuf::from(p));
+        return Ok(VaultPath::from(PathBuf::from(p)));
     }
 
     Ok(default_vault_path())
@@ -187,16 +210,16 @@ pub async fn save_file_config(path: &PathBuf, cfg: &FileConfig) -> std::io::Resu
     std::fs::write(path, s)
 }
 
-fn default_vault_path() -> PathBuf {
+fn default_vault_path() -> VaultPath {
     // Prefer platform data_dir, allow override via KEVI_DATA_DIR, fallback to ~/.kevi/vault.ron
     if let Ok(base) = env::var("KEVI_DATA_DIR") {
-        return PathBuf::from(base).join("kevi").join("vault.ron");
+        return VaultPath::from(PathBuf::from(base).join("kevi").join("vault.ron"));
     }
     if let Some(mut p) = dirs::data_dir() {
         p.push("kevi");
         p.push("vault.ron");
-        return p;
+        return VaultPath::from(p);
     }
     let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(&home).join(".kevi").join("vault.ron")
+    VaultPath::from(PathBuf::from(&home).join(".kevi").join("vault.ron"))
 }

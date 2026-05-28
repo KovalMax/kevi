@@ -1,11 +1,16 @@
+//! Vault service encapsulating load/save operations, header reuse, and encryption parameters.
+//! Serves as the core API for handlers/CLI/TUI while hiding persistence and crypto details.
+
 use crate::cryptography::memlock::{lock_slice, unlock_slice};
 use crate::cryptography::primitives::{
     decrypt_vault_with_key, default_params, encrypt_vault_with_key, parse_kevi_header, KEY_LEN,
     SALT_LEN,
 };
+use crate::domain::VaultResult;
+use crate::error::KeviError;
 use crate::vault::models::{VaultData, VaultEntry};
 use crate::vault::ports::{ByteStore, HeaderParams, KeyResolver, VaultCodec};
-use anyhow::{Context, Result};
+use anyhow::Context;
 use ring::rand::{SecureRandom, SystemRandom};
 use secrecy::ExposeSecret;
 use std::sync::Arc;
@@ -30,18 +35,18 @@ impl VaultService {
         }
     }
 
-    pub fn load(&self) -> Result<VaultData> {
+    pub fn load(&self) -> VaultResult<VaultData> {
         let bytes = self.store.read()?;
         if bytes.is_empty() {
             return Ok(VaultData::default());
         }
         if !bytes.starts_with(b"KEVI") {
-            anyhow::bail!(
-                "unsupported vault format: missing KEVI header (plaintext is not allowed)"
-            );
+            return Err(KeviError::vault(
+                "unsupported vault format: missing KEVI header (plaintext is not allowed)",
+            ));
         }
-        let (hdr, _off) =
-            parse_kevi_header(&bytes).map_err(|e| anyhow::anyhow!("invalid header: {e}"))?;
+        let (hdr, _off) = parse_kevi_header(&bytes)
+            .map_err(|e| KeviError::vault(format!("invalid header: {e}")))?;
         let dk = self.key_resolver.resolve_for_header(&hdr)?;
         // Convert key vec to array for ring API
         let key_vec = dk.key.expose_secret().clone();
@@ -57,13 +62,13 @@ impl VaultService {
         self.codec.decode(&pt)
     }
 
-    pub fn save(&self, data: &VaultData) -> Result<()> {
+    pub fn save(&self, data: &VaultData) -> VaultResult<()> {
         let plain = self.codec.encode(data)?;
         let bytes = self.store.read()?;
         if !bytes.is_empty() {
             // Reuse existing header params and salt, generate new nonce
-            let (hdr, _off) =
-                parse_kevi_header(&bytes).map_err(|e| anyhow::anyhow!("invalid header: {e}"))?;
+            let (hdr, _off) = parse_kevi_header(&bytes)
+                .map_err(|e| KeviError::vault(format!("invalid header: {e}")))?;
             let dk = self.key_resolver.resolve_for_header(&hdr)?;
             let key_vec = dk.key.expose_secret().clone();
             let mut key_arr = [0u8; KEY_LEN];
@@ -104,13 +109,13 @@ impl VaultService {
         }
     }
 
-    pub fn add_entry(&self, entry: VaultEntry) -> Result<()> {
+    pub fn add_entry(&self, entry: VaultEntry) -> VaultResult<()> {
         let mut data = self.load()?;
         data.entries.push(entry);
         self.save(&data)
     }
 
-    pub fn remove_entry(&self, label: &str) -> Result<bool> {
+    pub fn remove_entry(&self, label: &str) -> VaultResult<bool> {
         let mut data = self.load()?;
         let before = data.entries.len();
         data.entries.retain(|e| e.label != label);

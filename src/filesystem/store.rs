@@ -1,6 +1,7 @@
+use crate::domain::VaultResult;
+use crate::error::KeviError;
 use crate::filesystem::secure::write_with_backups_n;
 use crate::vault::ports::ByteStore;
-use anyhow::{Context, Result};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -23,18 +24,23 @@ impl FileByteStore {
 }
 
 impl ByteStore for FileByteStore {
-    fn read(&self) -> Result<Vec<u8>> {
+    fn read(&self) -> VaultResult<Vec<u8>> {
         let path = &self.path;
         if !Path::new(path).exists() {
             return Ok(Vec::new());
         }
-        let mut f = File::open(path).context("Failed to open vault file")?;
+        let mut f = File::open(path).map_err(|_| KeviError::vault("Failed to open vault file"))?;
+
         let mut buf = Vec::new();
-        f.read_to_end(&mut buf)?;
+        f.read_to_end(&mut buf)
+            .map_err(|_| KeviError::vault("Failed to read vault file into buffer"))?;
         Ok(buf)
     }
 
-    fn write(&self, bytes: &[u8]) -> Result<()> {
-        write_with_backups_n(&self.path, bytes, self.backups)
+    fn write(&self, bytes: &[u8]) -> VaultResult<()> {
+        match write_with_backups_n(&self.path, bytes, self.backups) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(KeviError::vault(e.to_string())),
+        }
     }
 }

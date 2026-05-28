@@ -1,8 +1,9 @@
+use crate::domain::OtpName;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OtpEntry {
-    pub name: String,
+    pub name: OtpName,
     pub secret: String,
     pub issuer: Option<String>,
     pub username: String,

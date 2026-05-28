@@ -1,6 +1,8 @@
 pub mod cli;
 pub mod config;
 pub mod cryptography;
+pub mod domain;
+pub mod error;
 pub mod filesystem;
 pub mod otp;
 pub mod session_management;
