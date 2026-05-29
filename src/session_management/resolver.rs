@@ -45,7 +45,7 @@ pub trait PasswordResolver {
         inquire::Password::new("Master password")
             .without_confirmation()
             .prompt()
-            .map_err(|e| KeviError::prompt(e.to_string()).into())
+            .map_err(|e| KeviError::prompt(e.to_string()))
     }
 }
 

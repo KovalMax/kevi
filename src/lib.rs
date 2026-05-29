@@ -27,6 +27,7 @@ pub mod api {
     pub use crate::cryptography::generator::{
         estimate_bits_char_mode, estimate_bits_passphrase, strength_label, DefaultPasswordGenerator,
     };
+    pub use crate::cryptography::memlock::{lock_slice, unlock_slice};
     pub use crate::cryptography::primitives::{
         decrypt_vault, default_params, derive_key_argon2id, encrypt_vault,
         header_fingerprint_excluding_nonce, HeaderError, KeviHeader, AEAD_AES256GCM,
