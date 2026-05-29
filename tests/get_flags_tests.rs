@@ -4,8 +4,7 @@ use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
 
-use kevi::vault::models::{VaultData, VaultEntry};
-use kevi::vault::persistence::save_vault_file;
+use kevi::api::{save_vault_file, VaultData, VaultEntry};
 use secrecy::SecretString;
 
 fn default_vault_path_for(home: &std::path::Path) -> std::path::PathBuf {

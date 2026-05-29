@@ -2,14 +2,15 @@ use crate::cryptography::primitives::{
     derive_key_argon2id, header_fingerprint_excluding_nonce, KeviHeader, AEAD_AES256GCM,
     HEADER_VERSION, KDF_ARGON2ID, KEY_LEN, NONCE_LEN,
 };
+use crate::domain::VaultResult;
+use crate::error::KeviError;
 use crate::session_management::session::{load, save};
 use crate::vault::ports::{DerivedKey, HeaderParams, KeyResolver};
-use anyhow::Result;
 use base64::{engine::general_purpose, Engine as _};
 use secrecy::{ExposeSecret, SecretBox};
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -18,8 +19,8 @@ pub struct DerivedKeyStored {
     pub key_b64: String,
 }
 
-pub fn dk_session_file_for(vault_path: &std::path::Path) -> PathBuf {
-    vault_path.with_extension("dksession")
+pub fn dk_session_file_for<P: AsRef<Path>>(vault_path: P) -> PathBuf {
+    vault_path.as_ref().with_extension("dksession")
 }
 
 pub fn save_derived_key_session(
@@ -27,7 +28,7 @@ pub fn save_derived_key_session(
     fingerprint: &str,
     key: &SecretBox<Vec<u8>>,
     ttl: Duration,
-) -> Result<()> {
+) -> VaultResult<()> {
     let stored = DerivedKeyStored {
         header_fingerprint_hex: fingerprint.to_string(),
         key_b64: general_purpose::STANDARD.encode(key.expose_secret()),
@@ -36,16 +37,15 @@ pub fn save_derived_key_session(
 }
 
 pub trait PasswordResolver {
-    fn resolve_password(&self) -> String {
-        let pw = if let Ok(pw) = env::var("KEVI_PASSWORD") {
-            pw
-        } else {
-            inquire::Password::new("Master password")
-                .without_confirmation()
-                .prompt()
-                .unwrap()
-        };
-        pw
+    fn resolve_password(&self) -> VaultResult<String> {
+        if let Ok(pw) = env::var("KEVI_PASSWORD") {
+            return Ok(pw);
+        }
+
+        inquire::Password::new("Master password")
+            .without_confirmation()
+            .prompt()
+            .map_err(|e| KeviError::prompt(e.to_string()))
     }
 }
 
@@ -65,7 +65,7 @@ impl CachedKeyResolver {
 }
 
 impl KeyResolver for CachedKeyResolver {
-    fn resolve_for_header(&self, hdr: &KeviHeader) -> Result<DerivedKey> {
+    fn resolve_for_header(&self, hdr: &KeviHeader) -> VaultResult<DerivedKey> {
         let fp = header_fingerprint_excluding_nonce(hdr);
         if let Some(sess) = load::<DerivedKeyStored>(&self.dk_session_path)? {
             if sess.header_fingerprint_hex == fp {
@@ -81,7 +81,7 @@ impl KeyResolver for CachedKeyResolver {
             }
         }
         // Cache miss: derive from passphrase
-        let pw = self.resolve_password();
+        let pw = self.resolve_password()?;
         let key_arr = derive_key_argon2id(&pw, &hdr.salt, hdr.m_cost_kib, hdr.t_cost, hdr.p_lanes)?;
         let key_vec = SecretBox::new(Box::new(key_arr.to_vec()));
         // Default TTL: 900s unless KEVI_UNLOCK_TTL provided
@@ -103,8 +103,12 @@ impl KeyResolver for CachedKeyResolver {
         Ok(DerivedKey { key: key_vec })
     }
 
-    fn resolve_for_new_vault(&self, params: HeaderParams, salt: [u8; 16]) -> Result<DerivedKey> {
-        let pw = self.resolve_password();
+    fn resolve_for_new_vault(
+        &self,
+        params: HeaderParams,
+        salt: [u8; 16],
+    ) -> VaultResult<DerivedKey> {
+        let pw = self.resolve_password()?;
         let key_arr =
             derive_key_argon2id(&pw, &salt, params.m_cost_kib, params.t_cost, params.p_lanes)?;
         let key_vec = SecretBox::new(Box::new(key_arr.to_vec()));
@@ -157,15 +161,19 @@ impl BypassKeyResolver {
 }
 
 impl KeyResolver for BypassKeyResolver {
-    fn resolve_for_header(&self, hdr: &KeviHeader) -> Result<DerivedKey> {
-        let pw = self.resolve_password();
+    fn resolve_for_header(&self, hdr: &KeviHeader) -> VaultResult<DerivedKey> {
+        let pw = self.resolve_password()?;
         let key_arr = derive_key_argon2id(&pw, &hdr.salt, hdr.m_cost_kib, hdr.t_cost, hdr.p_lanes)?;
         Ok(DerivedKey {
             key: SecretBox::new(Box::new(key_arr.to_vec())),
         })
     }
 
-    fn resolve_for_new_vault(&self, params: HeaderParams, salt: [u8; 16]) -> Result<DerivedKey> {
+    fn resolve_for_new_vault(
+        &self,
+        params: HeaderParams,
+        salt: [u8; 16],
+    ) -> VaultResult<DerivedKey> {
         let pw = if let Ok(pw) = env::var("KEVI_PASSWORD") {
             pw
         } else {

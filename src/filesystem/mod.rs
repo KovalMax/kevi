@@ -1,3 +1,3 @@
 pub mod clipboard;
-pub mod secure;
+pub(crate) mod secure;
 pub mod store;

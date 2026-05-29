@@ -1,420 +1,234 @@
-![ci workflow](https://github.com/KovalMax/kevi/actions/workflows/ci.yml/badge.svg)
-[![codecov](https://codecov.io/github/KovalMax/kevi/graph/badge.svg?token=FOG7F18PST)](https://codecov.io/github/KovalMax/kevi)
+<p align="center">
+  <img src="assets/app_logo.svg" width="220" alt="Kevi logo">
+  <h1 align="center">Kevi — encrypted CLI vault</h1>
+</p>
 
-# Kevi — encrypted CLI vault
+<p align="center">
+  <a title="Build Status" target="_blank" href="https://github.com/KovalMax/kevi/actions/workflows/ci.yml"><img alt="ci badge icon" src="https://github.com/KovalMax/kevi/actions/workflows/ci.yml/badge.svg"></a>
+  <a title="Code Coverage" target="_blank" href="https://github.com/KovalMax/kevi"><img src="https://codecov.io/github/KovalMax/kevi/graph/badge.svg?token=FOG7F18PST" alt="code coverage badge"></a>
+</p>
 
----
 
-Kevi is a secure, terminal‑first password and secrets manager written in Rust.  
-It stores all entries in a single encrypted vault using Argon2id for key derivation and AES‑256‑GCM for authenticated encryption.
+### Kevi is a Rust, terminal-first password and secrets manager. It keeps everything in a single encrypted vault (Argon2id + AES-256-GCM), works well in headless and local setups, and ships an optional TUI for browsing and editing.
 
-Kevi focuses on:
+## Why Kevi
+- Single encrypted file, easy to back up and sync
+- CLI-first UX with an optional Ratatui interface
+- Fast unlock cache with TTL; explicit `kevi lock` to clear it
+- Clipboard helper with TTL and SSH/headless warnings (`--no-copy` / `--echo` available)
+- Built‑in generator (passwords or passphrases) with env/config overrides
+- TOTP storage and code generation with JSON output for scripting
+- Profiles for multi-vault setups; configurable vault paths and backups
 
-- Simple, script‑friendly CLI
-- Strong, modern cryptography
-- Sensible defaults and minimal configuration
-- First‑class support for TOTP (2FA) secrets via `totp-rs`
+## Who Kevi is for
 
----
+- You want a local, terminal-first password manager with one encrypted vault file.
+- You prefer scripting and automation-friendly commands with JSON output when needed.
+- You want optional TUI convenience without depending on a full desktop app.
 
-## Features
-
-- **Encrypted vault:**
-  - Argon2id KDF with configurable memory/time parameters
-  - AES‑256‑GCM for authenticated encryption
-  - Atomically writes with backup rotation on save
-- **Password management:**
-  - Add, get, list, edit, remove entries
-  - Strong password/passphrase generator with configurable policy
-  - Clipboard integration with configurable TTL
-- Derived‑key **session caching** to avoid re‑typing the master passphrase repeatedly.
-- **TOTP / OTP:**
-  - Store TOTP secrets (Base32 or `otpauth://` URI)
-  - Generate current codes
-  - List and remove OTP entries in the vault
-- **Config & profiles:**
-  - `config.toml` with profiles and default vault path
-  - CLI/env/config/defaults precedence for options
-- **TUI:**
-  - Ratatui‑based UI for browsing, editing, adding, and copying credentials
-
-> For a detailed description of the cryptography, threat model, and
-> operational security guidance, see [`SECURITY.md`](SECURITY.md).
----
-
-## Installation
-
-```bash
-cargo install kevi
-```
-Or from a source:
-```bash
-git clone https://github.com/<you>/kevi.git
-cd kevi
-cargo build --release
-```
-The resulting binary will be at ```target/release/kevi```
-
-Concepts
----
-
-### Vault
-
-All secrets live in a single **vault file**, which is an encrypted
-binary file written in the Kevi format. The vault contains a list of
-"entries" each with:
-
-* A **label** (name)
-* An optional **username**
-* A **password** (or other secret string)
-* Optional **notes**
-
-The vault is encrypted with a key derived from your **master
-password** using Argon2id. The key and vault contents are never stored
-in plaintext on disk.
-
-### Entries
-
-An entry is a single named record in the vault, identified by its
-label. You typically use labels like `github`, `email`, `bank`, etc.
-
-For example, an entry might look like:
-
-* label: `github`
-* username: `alice`
-* password: `...`
-* notes: `personal account`
-
-### Clipboard and echoing
-
-Kevi encourages workflows where your actual secrets are kept off the
-terminal screen as much as practical:
-
-* By default, when you `get` an entry, Kevi will **copy the
-  requested field (usually the password) to the clipboard** and show a
-  small textual confirmation.
-* You can use `--echo` to print a field to standard output (for
-  scripts or when clipboard is not available).
-* You can use `--no-copy` to avoid touching the clipboard.
-
-See the usage examples below for concrete combinations.
-
-### Configuration and vault location
-
-Kevi uses a configuration file to find the default vault path and
-other options. On Unix‑like systems, the config lives in
-
-```text
-$XDG_CONFIG_HOME/kevi/config.toml
-```
-
-If `XDG_CONFIG_HOME` is not set, a platform‑specific default config
-directory is used (for example `~/.config/kevi/config.toml` on many
-Linux distributions). Similar conventions apply on macOS and Windows
-via the `dirs` crate.
-
-You can override configuration via **command‑line flags** or
-**environment variables**:
-
-* `--path` – explicit path to the vault file for a command.
-* `KEVI_VAULT_PATH` – environment variable specifying a default vault
-  path.
-* `KEVI_CONFIG_DIR` – override the config directory.
-* `KEVI_DATA_DIR` – override the data directory (where the default
-  vault is stored).
-
-There are additional environment variables for clipboard TTL and
-generator defaults; see the configuration section below.
+Kevi is likely not a fit if you need a built-in sync service, web sharing flows, or multi-user access control out of the box.
 
 ## Quick start
-### Initialize a vault
-
 ```bash
-#Uses default location (config and data dirs)
-kevi init
+# install from crates.io (if published there)
+cargo install kevi
+
+# or build from source
+cargo build --release
+./target/release/kevi --help
+
+# create a vault (prompts for a master password)
+kevi init --path ~/.kevi/vault.ron
+
+# add your first secret
+kevi add --label github --user you@example.com --generate
+
+# fetch it (copies to clipboard by default)
+kevi get github --echo
+
+# add an OTP entry and fetch a code
+kevi otp add github --from-uri "otpauth://..."
+kevi otp get github --echo
+
+# browse/edit via TUI
+kevi tui
 ```
 
-You will be prompted for a master password.
+## Most used commands
 
-The vault is stored as an encrypted RON file (e.g., vault.ron) in the data directory.
+- `kevi init --path <FILE>`: create vault.
+- `kevi add --label <KEY> --generate`: add entry.
+- `kevi get <KEY> --echo`: print field (clipboard copy is default unless `--no-copy`).
+- `kevi list --query <SUBSTR>`: find entries quickly.
+- `kevi unlock --ttl <SECONDS>` / `kevi lock`: manage derived-key cache.
+- `kevi otp add|get|list|rm ...`: manage and generate TOTP codes.
 
-### Add a password entry
-```bash
-# interactively enter username, password, notes, or let Kevi generate one
-kevi add
+## Defaults at a glance
 
-# or specify all fields explicitly
-kevi add \
-  --label github \
-  --user alice \
-  --password 's3cret' \
-  --notes 'personal account'
-```
-You can also tell Kevi to generate a random password instead of
-supplying one explicitly; see the `add` command help.
+- Clipboard TTL: `20s`.
+- Unlock cache TTL: `900s`.
+- Backups per write: `2`.
+- Generator defaults: length `20`, lower+upper+digits+symbols on, ambiguous avoided, passphrase off (6 words, `:` separator).
 
-### Get and copy a password
-```bash
-# Prints nothing, copies password to clipboard for the configured TTL
-kevi get github
+## How Kevi picks paths and TTLs
+- Vault resolution (highest precedence): `--path` → `--profile` (from config) → `KEVI_VAULT_PATH` → `config.toml` `vault_path` → default `$KEVI_DATA_DIR/kevi/vault.ron` (or `~/.kevi/vault.ron`).
+- Clipboard TTL: CLI `--ttl` → env `KEVI_CLIP_TTL` → config `clipboard_ttl` → default `20s`.
+- Unlock cache TTL: CLI `--ttl` → env `KEVI_UNLOCK_TTL` → default `900s`.
+- Generator: CLI flags override `KEVI_GEN_*` env vars, which override `config.toml` generator keys, which override built-in defaults.
+- Backups kept per write: env `KEVI_BACKUPS` → config `backups` → built-in default.
 
-# Prints the password to stdout, no clipboard interaction
-kevi get github --echo --no-copy
+## Common first-run pitfalls
 
-# Prints nothing, copies user to clipboard for the configured TTL
-kevi get github --field user
-```
+- `kevi get` and `kevi otp get` copy to clipboard by default. Use `--no-copy` (and usually `--echo`) when running over SSH/headless.
+- `KEVI_PASSWORD` enables non-interactive usage; without it, commands that need a key may prompt.
+- `--once` bypasses the derived-key cache for that command and does not refresh cache state.
+- If output seems empty, verify you are targeting the expected vault path/profile (`--path` / `--profile`).
 
-### List
+## CLI commands and options
+Global option: `--profile <name>` resolves vault path via a named profile before other fallbacks.
 
-List entries in the vault:
+### Core vault
 
-```bash
-kevi list [--query <TERM>] [--show-users] [--json]
-```
+- `kevi init [--path <FILE>]` — Create a new encrypted vault file and set a master password.
+  - `--path <FILE>`: vault file to create (else resolution rules apply); prompts for master password or uses `KEVI_PASSWORD`.
+- `kevi header [--path <FILE>]` — Print vault header metadata without decrypting secrets.
+  - `--path <FILE>`: vault file to inspect; prints header (no secrets).
+- `kevi add [--path <FILE>] [--generate] [--length <N>] [--no-lower] [--no-upper] [--no-digits] [--no-symbols] [--allow-ambiguous] [--passphrase] [--words <N>] [--sep <STR>] [--label <STR>] [--user <STR>] [--notes <STR>]` — Add a new entry, optionally generating the secret.
+  - `--path <FILE>`: vault override.
+  - `--generate`: create a password instead of prompting.
+  - `--length <N>`: generated password length (character mode).
+  - `--no-lower|--no-upper|--no-digits|--no-symbols`: disable that class.
+  - `--allow-ambiguous`: permit ambiguous chars (O/0/I/l/|).
+  - `--passphrase`: switch generator to passphrase mode.
+  - `--words <N>`: passphrase word count.
+  - `--sep <STR>`: passphrase separator.
+  - `--label <STR>`: entry label (key) to skip prompt.
+  - `--user <STR>`: username value (optional).
+  - `--notes <STR>`: notes value (optional).
+- `kevi get <key> [--path <FILE>] [--field password|user|notes] [--no-copy] [--echo] [--ttl <SECONDS>] [--once]` — Retrieve an entry field, copy to clipboard by default, or print.
+  - `--path <FILE>`: vault override.
+  - `--field password|user|notes`: which field to return (default password).
+  - `--no-copy`: do not write to clipboard.
+  - `--echo`: print to stdout.
+  - `--ttl <SECONDS>`: clipboard TTL override.
+  - `--once`: bypass session cache (derive key without caching).
+- `kevi show <key> [--reveal-password] [--path <FILE>]` — Display entry details in the terminal.
+  - `--reveal-password`: print password in plaintext.
+  - `--path <FILE>`: vault override.
+- `kevi list [--path <FILE>] [--show-users] [--query <SUBSTR>] [--json]` — List stored entries with optional filters/output.
+  - `--path <FILE>`: vault override.
+  - `--show-users`: include usernames.
+  - `--query <SUBSTR>`: case-insensitive filter on labels.
+  - `--json`: machine-readable array (includes username only with `--show-users`).
+- `kevi rm <key> [--path <FILE>] [--yes]` — Remove an entry by key.
+  - `--path <FILE>`: vault override.
+  - `--yes`: skip confirmation.
+- `kevi unlock [--path <FILE>] [--ttl <SECONDS>]` — Cache the derived key for faster subsequent commands.
+  - `--path <FILE>`: vault override.
+  - `--ttl <SECONDS>`: unlock cache TTL override.
+- `kevi lock [--path <FILE>]` — Clear the cached derived key (session cache).
+  - `--path <FILE>`: vault override.
+- `kevi tui [--path <FILE>]` — Launch the interactive TUI against the resolved vault.
+  - `--path <FILE>`: vault override for the TUI.
 
-Options:
+### OTP (TOTP)
 
-* `--query` – filter labels by a case‑insensitive substring.
-* `--show-users` – include usernames in the output.
-* `--json` – output in JSON format.
+- `kevi otp add <name> [--secret <BASE32> | --from-uri <URI>] [--issuer <STR>] [--username <STR>] [--digits <6|8>] [--period <SECONDS>] [--algorithm sha1|sha256|sha512] [--notes <STR>] [--on-duplicate-override] [--path <FILE>]` — Create or update a TOTP entry.
+  - `--secret <BASE32>`: raw secret (exclusive with `--from-uri`).
+  - `--from-uri <URI>`: otpauth URI to parse (exclusive with `--secret`).
+  - `--issuer <STR>`: issuer label.
+  - `--username <STR>`: account name.
+  - `--digits <6|8>`: code length (default 6).
+  - `--period <SECONDS>`: step size (default 30).
+  - `--algorithm sha1|sha256|sha512`: HMAC algorithm (default sha1).
+  - `--notes <STR>`: notes.
+  - `--on-duplicate-override`: replace existing entry if present.
+  - `--path <FILE>`: vault override.
+- `kevi otp get <name> [--path <FILE>] [--no-copy] [--echo] [--json] [--at <UNIX_TS>] [--once]` — Generate a TOTP code for an entry and copy/print it.
+  - `--path <FILE>`: vault override.
+  - `--no-copy`: skip clipboard.
+  - `--echo`: print code.
+  - `--json`: structured output.
+  - `--at <UNIX_TS>`: generate code for specific timestamp.
+  - `--once`: bypass session cache.
+- `kevi otp list [--path <FILE>] [--query <SUBSTR>] [--json]` — List OTP entries with optional filters/output.
+  - `--path <FILE>`: vault override.
+  - `--query <SUBSTR>`: case-insensitive filter on names.
+  - `--json`: machine-readable array.
+- `kevi otp rm <name> [--path <FILE>] [--yes]` — Remove a TOTP entry by name.
+  - `--path <FILE>`: vault override.
+  - `--yes`: skip confirmation.
 
-### `unlock` and `lock`
+### Profiles (multi-vault)
 
-Kevi supports caching a derived key in a session file to avoid
-repeatedly entering your master password.
+- `kevi profile list` — Show all configured profiles and the default, if set.
+  - No options; prints profiles and default.
+- `kevi profile show <name>` — Display details for a single profile.
+  - No extra options; prints one profile.
+- `kevi profile add <name> --path <FILE> [--on-duplicate-override]` — Create or update a profile pointing to a vault path.
+  - `--path <FILE>`: vault path for the profile (required flag).
+  - `--on-duplicate-override`: replace existing profile.
+- `kevi profile rm <name> [--yes]` — Delete a profile (not the active default).
+  - `--yes`: skip confirmation (cannot remove active default).
+- `kevi profile default [<name>] [--clear]` — View, set, or clear the default profile.
+  - `<name>`: set default profile; omit to show current.
+  - `--clear`: remove default profile.
 
-```bash
-kevi unlock [--ttl <SECONDS>]
-
-kevi lock
-```
-
-* `unlock` derives a key from your password, binds it to the vault
-  header via a fingerprint, and stores it in a small session file with
-  a TTL.
-* `lock` removes the session file so future operations will prompt for
-  the password again.
-
-## OTP / TOTP usage
-#### Kevi can store and generate TOTP (time‑based OTP) codes alongside your passwords, using totp-rs under the hood.
-
-### Add an OTP secret
-#### You can add a TOTP secret either as a Base32 key or as an otpauth://URI
-
-### From a Base32 secret
-```bash
-kevi otp add github-2fa \
-  --secret JBSWY3DPEHPK3PXP \
-  --issuer GitHub \
-  --username you@example.com \
-  --digits 6 \
-  --period 30
-```
-- ```--secret``` is the Base32‑encoded key exported from your authenticator.
-- ```--issuer```, ```--username```, ```--digits```, ```--period```, ```--algorithm``` override defaults when needed.
-
-### From an otpauth URI
-```bash
-kevi otp add github-2fa --from-uri "otpauth://totp/GitHub:you@example.com?secret=JBSWY3DPEHPK3PXP&issuer=GitHub"
-```
-- Kevi parses the URI, extracts secret, issuer, digits, period, and algorithm.
-- CLI flags (like ```--name```, ```--issuer```, ```--username```, ```--digits```, ```--period```, ```--algorithm```) can still override the parsed values.
-
-If an entry with the same name exists:
-- Without flags, add fails with an error.
-- To replace it, use:
-```bash
-kevi otp add github-2fa \
-  --secret NEWSECRETBASE32 \
-  --on-duplicate-override
-```
-
-### Generate and copy OTP codes
-To generate the current TOTP code for an existing OTP entry:
-```bash
-# Generate and copy to clipboard (default behavior)
-kevi otp get github-2fa
-```
-Useful flags:
-- ```--echo```: also print the code to stdout, e.g.:
-- ```--no-copy```: do not touch the clipboard.
-- ```--json```: print a JSON object with metadata:
-- ```--at <unix_ts>```: generate the code at a specific timestamp (for debugging):
-- ```--once```: bypass any session cache and always ask for the vault password to derive the key (if your resolver supports that semantics).
-
-```bash
-kevi otp get github-2fa --echo --no-copy
-
-kevi otp get github-2fa --json --no-copy
-
-kevi otp get github-2fa --at 1700000000 --echo --no-copy
-```
-
-The clipboard TTL is taken from config/environment or defaults (e.g. ```KEVI_CLIP_TTL```).
-
-### List OTP entries
-#### To list all OTP entries stored in the vault:
-```bash
-kevi otp list
-
-#example output:
-github-2fa   GitHub   30s   6 digits   SHA1
-work-2fa     Work     30s   6 digits   SHA1
-```
-#### Filter by name:
-```bash
-kevi otp list --query github
-```
-#### JSON output (suitable for scripting):
-```bash
-kevi otp list --json
-```
-Each item includes ```name```, ```issuer```, ```digits```, ```period```, and ```algorithm```.
-
-### Remove an OTP entry
-#### Remove an OTP entry by name:
-```bash
-# With confirmation
-kevi otp rm github-2fa
-```
-#### Use ```--yes``` (or the flag you defined) to skip the confirmation prompt:
-```bash
-kevi otp rm github-2fa --yes
-```
-If the entry does not exist, Kevi prints a friendly message and exits successfully.
-
-## Profiles
-
-You can define named profiles in your `config.toml` (or via CLI) to avoid passing `--path` for different vaults.
-
-Manage profiles via the CLI:
+#### Profile examples
 
 ```bash
-# Add or update a profile
-kevi profile add work --path /home/alice/work/kevi-work.ron --on-duplicate-override
+# add two vault profiles
+kevi profile add work --path ~/.kevi/work.ron
+kevi profile add personal --path ~/.kevi/personal.ron
 
-# List and inspect profiles
-kevi profile list
-kevi profile show work
-
-# Set or clear default profile
+# set default profile
 kevi profile default work
-kevi profile default --clear
+
+# use default profile
+kevi list
+
+# override per command
+kevi --profile personal list
 ```
 
-Use a profile with any command:
+### JSON output examples
 
 ```bash
-kevi --profile work list
-kevi --profile work get github --field password --echo --no-copy
-kevi --profile work tui
+# vault list as JSON
+kevi list --json
+
+# OTP code as JSON (for scripts)
+kevi otp get github --json
 ```
 
-Profiles only change **which vault file** is used; they do not change the cryptography or security model.
+## Configuration & environment
 
-Environment variables can override some of these:
-
-* `KEVI_VAULT_PATH` – override `vault_path`.
-* `KEVI_CLIP_TTL` – override `clipboard_ttl_secs`.
-* `KEVI_BACKUPS` – override `backups`.
-* `KEVI_GEN_LENGTH`, `KEVI_GEN_*` – override password generator
-  defaults.
-
-
-TUI usage
----------
-
-Run:
-
-```bash
-kevi tui [--path <FILE>]
-```
-
-This opens an interactive TUI built on top of the `ratatui` and
-`crossterm` crates. Exact key bindings may evolve, but typical
-behaviors include:
-
-* **Navigation** – use arrow keys, `j/k`, or PageUp/PageDown to move
-  through the list of entries.
-* **Search/filter** – start typing or use a dedicated search key to
-  filter by label.
-* **Copy password** – press `Enter` on a selected entry to copy its
-  password to the clipboard; a short message appears indicating the
-  clipboard TTL.
-* **Copy username** – press `u` to copy the username of the selected
-  entry to the clipboard.
-* **Details view** – open a detailed view of an entry showing label,
-  username, notes, and a masked password. Future versions may support
-  an explicit reveal toggle.
-
-The TUI is designed to avoid printing passwords to the screen by
-default; operations are oriented around copying to the clipboard.
-
-## Configuration
-### Kevi reads configuration from:
-1. CLI flags
-2. Environment variables
-3. ```config.toml``` (e.g. ```~/.config/kevi/config.toml```)
-4. Built‑in defaults
-
-### Example ```config.toml```:
-```toml
-vault_path = "/home/user/.local/share/kevi/vault.ron"
-clipboard_ttl = 20
-backups = 3
-
-default_profile = "work"
-
-[profiles.work]
-vault_path = "/home/user/.local/share/kevi/work-vault.ron"
-
-[profiles.personal]
-vault_path = "/home/user/.local/share/kevi/personal-vault.ron"
-``` 
-
-### Typical fields include:
-* `vault_path` – default path to the vault file.
-* `clipboard_ttl` – how long secrets stay in the clipboard
-  (approximate; depends on platform support).
-* `backups` – how many historical versions of the vault file to keep
-  when writing.
-
-### Some env overrides:
-- ```KEVI_VAULT_PATH``` – override vault path
-- ```KEVI_CLIP_TTL``` – clipboard TTL in seconds
-- ```KEVI_BACKUPS``` – number of rotated backups
-- ```KEVI_CONFIG_DIR```, ```KEVI_DATA_DIR``` – override config/data roots
+- Config file: `$XDG_CONFIG_HOME/kevi/config.toml` (or `~/.config/kevi/config.toml`); override base dir with `KEVI_CONFIG_DIR`.
+- Data dir: `$XDG_DATA_HOME/kevi` (or `~/.local/share/kevi`); override with `KEVI_DATA_DIR`.
+- `config.toml` keys: `vault_path`, `clipboard_ttl`, `backups`, `default_profile`, `[profiles.<name>].vault_path`, generator defaults (`generator_length`, `generator_words`, `generator_sep`, `avoid_ambiguous`).
+- Env vars: `KEVI_PASSWORD`, `KEVI_VAULT_PATH`, `KEVI_CLIP_TTL`, `KEVI_UNLOCK_TTL`, `KEVI_BACKUPS`, `KEVI_GEN_LENGTH`, `KEVI_GEN_WORDS`, `KEVI_GEN_SEP`, `KEVI_AVOID_AMBIGUOUS`.
+- Precedence: CLI flags → env vars → config file → built‑in defaults.
 
 ## Security notes
-- Kevi uses Argon2id for key derivation and AES‑256‑GCM for encryption.
-- Secrets (passwords, OTP secrets) are kept in memory using ```secrecy``` to avoid accidental logging.
-- Best‑effort ```mlock``` is available on Unix via the ```memlock``` feature to protect sensitive memory from swapping.
-- Clipboard integration respects TTL but cannot protect against all OS‑level attacks; treat clipboard as a convenience, not a strong boundary.
 
-Development
------------
+- Argon2id KDF, AES‑256‑GCM encryption; secrets handled with `secrecy`.
+- Optional `memlock` feature on Unix to reduce swapping risk.
+- Clipboard TTL is best‑effort and platform-dependent; prefer `--no-copy`/`--echo` in sensitive or remote sessions.
+- Kevi stores data in one encrypted local file; it does not include a built-in remote sync backend.
 
-### Running tests and linters
-
-From the project root:
+## Development
 
 ```bash
 cargo fmt --all
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all
-```
-
-On Linux, you can also run tests with the `memlock` feature enabled:
-
-```bash
-cargo test --all --features memlock
+cargo test --workspace
+# Linux with locked memory support
+cargo test --workspace --features memlock
 ```
 
 ### Code coverage
 
-If you have `cargo-llvm-cov` installed, you can generate coverage
-locally with:
+If you have `cargo-llvm-cov` installed, you can generate coverage locally with:
 
 ```bash
 cargo llvm-cov --workspace --no-cfg-coverage --html
@@ -427,9 +241,9 @@ This will create an HTML report under a `coverage-html` directory.
 This repository includes a GitHub Actions workflow that runs:
 
 * `cargo fmt --all` (format check)
-* `cargo clippy --all-targets --all-features -- -D warnings`
-* `cargo build --all`
-* `cargo test --all` (with and without `memlock` on Linux)
+* `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+* `cargo build --workspace`
+* `cargo test --workspace` (with and without `memlock` on Linux)
 * `cargo audit` (via a dedicated job)
 * `cargo llvm-cov` for coverage reporting
 
@@ -437,9 +251,8 @@ You can mirror these steps locally before pushing changes.
 
 ### Contributing
 
-Contributions, bug reports, and feature ideas are welcome. When
-submitting a pull request:
+Contributions, bug reports, and feature ideas are welcome. When submitting a pull request:
 
-* Run `cargo fmt`, `cargo clippy`, and `cargo test` locally.
+* Run checks in this order: `cargo test --workspace` first, then `cargo fmt --all`, then `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
 * Try to include tests for new functionality where practical.
 * Avoid logging or printing secrets; prefer redacted debug output.

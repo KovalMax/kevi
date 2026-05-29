@@ -1,4 +1,5 @@
-use anyhow::{anyhow, Result};
+use crate::domain::VaultResult;
+use crate::error::KeviError;
 use argon2::{Algorithm, Argon2, Params, Version};
 use ring::{
     aead,
@@ -37,14 +38,14 @@ pub fn derive_key_argon2id(
     m_cost_kib: u32,
     t_cost: u32,
     p: u32,
-) -> Result<[u8; KEY_LEN]> {
+) -> VaultResult<[u8; KEY_LEN]> {
     let params = Params::new(m_cost_kib, t_cost, p, Some(KEY_LEN))
-        .map_err(|e| anyhow!("invalid Argon2 params: {e}"))?;
+        .map_err(|e| KeviError::crypto(format!("invalid Argon2 params: {e}")))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
     let mut key = [0u8; KEY_LEN];
     argon2
         .hash_password_into(password.as_bytes(), salt, &mut key)
-        .map_err(|e| anyhow!("argon2 key derivation failed: {e}"))?;
+        .map_err(|e| KeviError::crypto(format!("argon2 key derivation failed: {e}")))?;
     Ok(key)
 }
 
@@ -155,20 +156,21 @@ pub fn header_fingerprint_excluding_nonce(hdr: &KeviHeader) -> String {
     hex::encode(digest)
 }
 
-pub fn encrypt_vault(data: &[u8], password: &str) -> Result<Vec<u8>> {
+pub fn encrypt_vault(data: &[u8], password: &str) -> VaultResult<Vec<u8>> {
     // Derive key using defaults, then delegate to a key-based path to avoid AEAD duplication
     let (m_cost_kib, t_cost, p_lanes) = default_params();
     let rng = SystemRandom::new();
     let mut salt = [0u8; SALT_LEN];
     rng.fill(&mut salt)
-        .map_err(|_| anyhow!("failed to generate salt"))?;
+        .map_err(|_| KeviError::crypto("failed to generate salt"))?;
     let key = derive_key_argon2id(password, &salt, m_cost_kib, t_cost, p_lanes)?;
     encrypt_vault_with_key(data, m_cost_kib, t_cost, p_lanes, salt, &key)
 }
 
-pub fn decrypt_vault(data: &[u8], password: &str) -> Result<Vec<u8>> {
+pub fn decrypt_vault(data: &[u8], password: &str) -> VaultResult<Vec<u8>> {
     // Parse header then delegate to key-based decrypt
-    let (hdr, _ct_offset) = parse_kevi_header(data).map_err(|e| anyhow!("invalid header: {e}"))?;
+    let (hdr, _ct_offset) =
+        parse_kevi_header(data).map_err(|e| KeviError::crypto(format!("invalid header: {e}")))?;
     let key = derive_key_argon2id(password, &hdr.salt, hdr.m_cost_kib, hdr.t_cost, hdr.p_lanes)?;
     decrypt_vault_with_key(data, &key)
 }
@@ -181,14 +183,14 @@ pub fn encrypt_vault_with_key(
     p_lanes: u32,
     salt: [u8; SALT_LEN],
     derived_key: &[u8; KEY_LEN],
-) -> Result<Vec<u8>> {
+) -> VaultResult<Vec<u8>> {
     let rng = SystemRandom::new();
     let mut nonce_bytes = [0u8; NONCE_LEN];
     rng.fill(&mut nonce_bytes)
-        .map_err(|_| anyhow!("failed to generate nonce"))?;
+        .map_err(|_| KeviError::crypto("failed to generate nonce"))?;
 
     let unbound = aead::UnboundKey::new(&aead::AES_256_GCM, derived_key)
-        .map_err(|_| anyhow!("failed to create sealing key"))?;
+        .map_err(|_| KeviError::crypto("failed to create sealing key"))?;
     let sealing_key = aead::LessSafeKey::new(unbound);
     let nonce = aead::Nonce::assume_unique_for_key(nonce_bytes);
 
@@ -197,26 +199,27 @@ pub fn encrypt_vault_with_key(
     in_out.reserve(aead::AES_256_GCM.tag_len());
     sealing_key
         .seal_in_place_append_tag(nonce, aead::Aad::from(&header), &mut in_out)
-        .map_err(|_| anyhow!("encryption failed"))?;
+        .map_err(|_| KeviError::crypto("encryption failed"))?;
     let mut out = header;
     out.extend_from_slice(&in_out);
     Ok(out)
 }
 
 /// Decrypt with a provided derived key. Uses header as AAD and verifies.
-pub fn decrypt_vault_with_key(data: &[u8], derived_key: &[u8; KEY_LEN]) -> Result<Vec<u8>> {
-    let (_hdr, ct_offset) = parse_kevi_header(data).map_err(|e| anyhow!("invalid header: {e}"))?;
+pub fn decrypt_vault_with_key(data: &[u8], derived_key: &[u8; KEY_LEN]) -> VaultResult<Vec<u8>> {
+    let (_hdr, ct_offset) =
+        parse_kevi_header(data).map_err(|e| KeviError::crypto(format!("invalid header: {e}")))?;
     let ciphertext = &data[ct_offset..];
     let unbound = aead::UnboundKey::new(&aead::AES_256_GCM, derived_key)
-        .map_err(|_| anyhow!("failed to create opening key"))?;
+        .map_err(|_| KeviError::crypto("failed to create opening key"))?;
     let opening_key = aead::LessSafeKey::new(unbound);
     // Extract nonce from the header again for convenience
     let nonce = aead::Nonce::try_assume_unique_for_key(&data[ct_offset - NONCE_LEN..ct_offset])
-        .map_err(|_| anyhow!("invalid nonce"))?;
+        .map_err(|_| KeviError::crypto("invalid nonce"))?;
     let aad = aead::Aad::from(&data[..ct_offset]);
     let mut in_out = ciphertext.to_vec();
     let pt = opening_key
         .open_in_place(nonce, aad, &mut in_out)
-        .map_err(|_| anyhow!("decryption failed"))?;
+        .map_err(|_| KeviError::crypto("decryption failed"))?;
     Ok(pt.to_vec())
 }

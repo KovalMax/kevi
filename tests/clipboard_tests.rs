@@ -1,4 +1,4 @@
-use kevi::filesystem::clipboard::{copy_with_ttl, ClipboardEngine};
+use kevi::api::{copy_with_ttl, ClipboardEngine, KeviError};
 use secrecy::SecretString;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -16,11 +16,11 @@ impl MockClipboard {
 }
 
 impl ClipboardEngine for MockClipboard {
-    fn get_contents(&self) -> anyhow::Result<Option<String>> {
+    fn get_contents(&self) -> Result<Option<String>, KeviError> {
         Ok(Some(self.buf.lock().unwrap().clone()))
     }
 
-    fn set_contents(&self, contents: &str) -> anyhow::Result<()> {
+    fn set_contents(&self, contents: &str) -> Result<(), KeviError> {
         *self.buf.lock().unwrap() = contents.to_string();
         Ok(())
     }

@@ -1,10 +1,10 @@
 use crate::cryptography::generator::{DefaultPasswordGenerator, SystemRng};
-use crate::filesystem::clipboard::{copy_with_ttl, SystemClipboardEngine};
+use crate::error::{TuiError, TuiResult};
+use crate::filesystem::clipboard::{copy_with_ttl_using_system_clipboard, ClipboardCopyError};
 use crate::vault::handlers::GetField;
 use crate::vault::models::VaultEntry;
-use crate::vault::ports::{GenPolicy, PasswordGenerator};
+use crate::vault::ports::{ByteStore, GenPolicy, KeyResolver, PasswordGenerator, VaultCodec};
 use crate::vault::service::VaultService;
-use anyhow::anyhow;
 use crossterm::event::KeyCode;
 use secrecy::{ExposeSecret, SecretString};
 use std::sync::Arc;
@@ -132,7 +132,7 @@ impl App {
     pub fn visible_labels(&self) -> Vec<String> {
         self.filtered
             .iter()
-            .map(|&i| self.entries[i].label.clone())
+            .map(|&i| self.entries[i].label.to_string())
             .collect()
     }
 
@@ -148,7 +148,7 @@ impl App {
         } else {
             let q = self.filter.to_lowercase();
             for (i, e) in self.entries.iter().enumerate() {
-                if e.label.to_lowercase().contains(&q) {
+                if e.label.as_str().to_lowercase().contains(&q) {
                     self.filtered.push(i);
                 }
             }
@@ -172,12 +172,12 @@ impl App {
     }
 
     pub fn copy_value_to_clipboard(&mut self, field: GetField, value: String, ttl: u64) {
-        if let Ok(engine) = SystemClipboardEngine::new() {
-            let secret = SecretString::new(value.into());
-            let _ = copy_with_ttl(Arc::new(engine), &secret, Duration::from_secs(ttl));
-            self.toast(format!("{field} copied ({ttl}s)"));
-        } else {
-            self.toast("Clipboard unavailable".to_string());
+        let secret = SecretString::new(value.into());
+        match copy_with_ttl_using_system_clipboard(&secret, Duration::from_secs(ttl)) {
+            Ok(()) => self.toast(format!("{field} copied ({ttl}s)")),
+            Err(ClipboardCopyError::Unavailable(_)) | Err(ClipboardCopyError::CopyFailed(_)) => {
+                self.toast("Clipboard unavailable".to_string());
+            }
         }
     }
 
@@ -185,7 +185,7 @@ impl App {
         if self.filtered.is_empty() {
             return None;
         }
-        Some(self.entries[self.filtered[self.selected]].label.clone())
+        Some(self.entries[self.filtered[self.selected]].label.to_string())
     }
 
     // View navigation
@@ -213,7 +213,7 @@ impl App {
         self.form_field = FormField::Label;
         if let Some(idx) = self.filtered.get(self.selected).cloned() {
             let e = &self.entries[idx];
-            self.form_label = e.label.clone();
+            self.form_label = e.label.to_string();
             self.form_user = e
                 .username
                 .as_ref()
@@ -221,7 +221,7 @@ impl App {
                 .unwrap_or_default();
             self.form_password = e.password.expose_secret().to_string();
             self.form_notes = e.notes.clone().unwrap_or_default();
-            self.form_original_label = e.label.clone();
+            self.form_original_label = e.label.to_string();
         }
     }
 
@@ -277,12 +277,17 @@ impl App {
         self.view = View::List;
     }
 
-    pub async fn handle_key_event(
+    pub async fn handle_key_event<StoreType, CodecType, ResolverType>(
         &mut self,
         code: KeyCode,
         ttl_secs: u64,
-        service: Arc<VaultService>,
-    ) -> anyhow::Result<()> {
+        service: Arc<VaultService<StoreType, CodecType, ResolverType>>,
+    ) -> TuiResult<()>
+    where
+        StoreType: ByteStore + 'static,
+        CodecType: VaultCodec + 'static,
+        ResolverType: KeyResolver + 'static,
+    {
         match self.view {
             View::List => match self.mode {
                 Mode::Normal => match code {
@@ -419,9 +424,11 @@ impl App {
                                 } else {
                                     Some(self.form_notes.trim().to_string())
                                 };
-                                let label_for_save = label.clone();
+                                let label_for_save = crate::domain::EntryLabel::from(label.clone());
                                 let form_pw = self.form_password.clone();
-                                let original_label = self.form_original_label.clone();
+                                let original_label = crate::domain::EntryLabel::from(
+                                    self.form_original_label.clone(),
+                                );
                                 let svc = service.clone();
                                 if is_add {
                                     let _ = spawn_blocking(move || {
@@ -443,7 +450,7 @@ impl App {
                                         svc.add_entry(entry_real)
                                     })
                                     .await
-                                    .map_err(|_| anyhow!("task join error"))?;
+                                    .map_err(crate::error::TuiError::from)?;
                                 } else {
                                     let _ = spawn_blocking(move || {
                                         let mut vault = svc.load()?;
@@ -464,13 +471,13 @@ impl App {
                                         }
                                     })
                                     .await
-                                    .map_err(|_| anyhow!("task join error"))?;
+                                    .map_err(crate::error::TuiError::from)?;
                                 }
                                 // Reload entries
                                 let svc_reload = service.clone();
                                 let new_entries = spawn_blocking(move || svc_reload.load())
                                     .await?
-                                    .map_err(|_| anyhow!("task join error"))?;
+                                    .map_err(|e| TuiError::Message(e.to_string()))?;
                                 self.replace_entries(new_entries.entries);
                                 self.view = View::List;
                                 self.toast("Saved".to_string());
@@ -501,7 +508,7 @@ impl App {
                             let svc_reload = service.clone();
                             if let Ok(Ok(ents)) = spawn_blocking(move || svc_reload.load())
                                 .await
-                                .map_err(|_| anyhow!("task join error"))
+                                .map_err(crate::error::TuiError::from)
                             {
                                 self.replace_entries(ents.entries);
                             }

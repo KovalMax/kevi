@@ -1,7 +1,4 @@
-use kevi::config::app_config::Config;
-use kevi::vault::handlers::{GetField, Vault};
-use kevi::vault::models::{VaultData, VaultEntry};
-use kevi::vault::persistence::{load_vault_file, save_vault_file};
+use kevi::api::{load_vault_file, save_vault_file, Config, GetField, Vault, VaultData, VaultEntry};
 use secrecy::SecretString;
 use std::env;
 use std::path::PathBuf;
@@ -59,4 +56,47 @@ async fn test_handle_rm_existing_entry() {
 
     let loaded = load_vault_file(&path, pw).unwrap();
     assert!(!loaded.entries.iter().any(|e| e.label == "rmtest"));
+}
+
+#[tokio::test]
+async fn test_handle_get_missing_entry_is_ok() {
+    let path = setup_vault_path("vault.ron");
+    let pw = "testpw";
+    let entry = VaultData {
+        entries: vec![],
+        otps: vec![],
+    };
+
+    save_vault_file(&entry, &path, pw).unwrap();
+    let config = Config::create(Some(path.clone()), None).unwrap();
+    let vault = Vault::create(&config);
+    env::set_var("KEVI_PASSWORD", pw);
+    let result = vault
+        .handle_get("missing", GetField::Password, true, None, false, false)
+        .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_handle_get_empty_optional_field_is_ok() {
+    let path = setup_vault_path("vault.ron");
+    let pw = "testpw";
+    let entry = VaultData {
+        entries: vec![VaultEntry {
+            label: "no-notes".into(),
+            username: None,
+            password: SecretString::new("secret".into()),
+            notes: None,
+        }],
+        otps: vec![],
+    };
+
+    save_vault_file(&entry, &path, pw).unwrap();
+    let config = Config::create(Some(path.clone()), None).unwrap();
+    let vault = Vault::create(&config);
+    env::set_var("KEVI_PASSWORD", pw);
+    let result = vault
+        .handle_get("no-notes", GetField::Notes, true, None, false, false)
+        .await;
+    assert!(result.is_ok());
 }

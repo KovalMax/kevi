@@ -1,17 +1,13 @@
 use crossterm::event::KeyCode;
+use kevi::api::{
+    render_list, App, CachedKeyResolver, FileByteStore, FormField, Mode, RonCodec, VaultEntry,
+    VaultService, View,
+};
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use secrecy::SecretString;
 use std::env;
 use std::sync::Arc;
-
-use kevi::filesystem::store::FileByteStore;
-use kevi::session_management::resolver::CachedKeyResolver;
-use kevi::tui::app::{App, FormField, Mode, View};
-use kevi::tui::views::list::render_list;
-use kevi::vault::codec::RonCodec;
-use kevi::vault::models::VaultEntry;
-use kevi::vault::service::VaultService;
-use secrecy::SecretString;
 use tempfile::tempdir;
 
 fn entry(label: &str, pw: Option<&str>) -> VaultEntry {

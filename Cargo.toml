@@ -1,8 +1,12 @@
 [package]
 name = "kevi"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 build = "build.rs"
+
+[workspace]
+members = [".", "crates/kevi-core"]
+resolver = "2"
 
 [features]
 # Optional best-effort memory locking for derived keys on Unix.
@@ -46,6 +50,7 @@ libc = { version = "0.2", optional = true }
 # 🔁 Async runtime
 tokio = { version = "1.46", features = ["rt-multi-thread", "macros", "fs"] }
 dirs = "6.0.0"
+kevi-core = { path = "crates/kevi-core" }
 
 
 [dev-dependencies]

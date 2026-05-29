@@ -1,6 +1,5 @@
 use assert_cmd::Command;
-use kevi::vault::models::VaultData;
-use kevi::vault::persistence::save_vault_file;
+use kevi::api::{save_vault_file, VaultData};
 use predicates::str::contains;
 use std::{env, fs};
 use tempfile::tempdir;
