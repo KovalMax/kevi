@@ -38,7 +38,8 @@ pub mod api {
     pub use crate::filesystem::store::FileByteStore;
 
     pub use crate::session_management::resolver::{
-        dk_session_file_for, save_derived_key_session, CachedKeyResolver, DerivedKeyStored,
+        dk_session_file_for, save_derived_key_session, BypassKeyResolver, CachedKeyResolver,
+        DerivedKeyStored,
     };
     pub use crate::session_management::session::{clear, load};
 

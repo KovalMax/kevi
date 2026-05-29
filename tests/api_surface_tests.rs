@@ -1,7 +1,7 @@
 use kevi::api::{
     build_totp, copy_with_ttl, load_file_config_with_path, parse_otp_entry, validate_totp_params,
-    ClipboardEngine, DerivedKeyStored, HeaderError, KeviError, OtpAddOptions, OtpAlgorithm,
-    VaultData,
+    BypassKeyResolver, ClipboardEngine, DerivedKeyStored, HeaderError, KeviError, OtpAddOptions,
+    OtpAlgorithm, VaultData,
 };
 use secrecy::SecretString;
 use std::sync::{Arc, Mutex};
@@ -53,6 +53,7 @@ fn api_exports_cover_main_entry_points() {
         header_fingerprint_hex: "abc".to_string(),
         key_b64: "def".to_string(),
     };
+    let _bypass = BypassKeyResolver::new();
 
     let opts = make_otp_options();
     validate_totp_params(&opts).expect("valid totp params through api");
