@@ -88,3 +88,13 @@ fn kevi_error_from_error_uses_display() {
     assert!(matches!(to_ke, KeviError::Vault(_)));
     assert_eq!(to_ke.to_string(), "Vault error: invalid json")
 }
+
+#[test]
+fn kevi_error_from_ron_error_uses_vault_variant() {
+    let ron_spanned = ron::from_str::<u32>("not-ron").expect_err("must fail to parse ron");
+    let ron_err: ron::Error = ron_spanned.into();
+    let to_ke: KeviError = ron_err.into();
+
+    assert!(matches!(to_ke, KeviError::Vault(_)));
+    assert!(to_ke.to_string().starts_with("Vault error: "));
+}
