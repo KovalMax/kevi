@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::domain::VaultResult;
 
 /// Best‑effort memory locking helpers for derived keys.
 ///
@@ -6,7 +6,7 @@ use anyhow::Result;
 /// mlock/munlock the given slice for the duration of a sensitive operation.
 /// On other platforms or when the feature is disabled, they are no‑ops.
 #[inline]
-pub fn lock_slice(_data: &mut [u8]) -> Result<()> {
+pub fn lock_slice(_data: &mut [u8]) -> VaultResult<()> {
     #[cfg(all(target_family = "unix", feature = "memlock"))]
     {
         // Safety: libc::mlock reads the pointer and length; it does not take
@@ -24,7 +24,7 @@ pub fn lock_slice(_data: &mut [u8]) -> Result<()> {
 }
 
 #[inline]
-pub fn unlock_slice(_data: &mut [u8]) -> Result<()> {
+pub fn unlock_slice(_data: &mut [u8]) -> VaultResult<()> {
     #[cfg(all(target_family = "unix", feature = "memlock"))]
     {
         let ptr = _data.as_ptr() as *const core::ffi::c_void;

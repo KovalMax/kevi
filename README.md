@@ -9,20 +9,33 @@
 </p>
 
 
-### Kevi is a Rust, terminal‑first password and secrets manager. It keeps everything in a single encrypted vault (Argon2id + AES‑256‑GCM), works great headless or locally, and ships an optional TUI for browsing and editing.
+### Kevi is a Rust, terminal-first password and secrets manager. It keeps everything in a single encrypted vault (Argon2id + AES-256-GCM), works well in headless and local setups, and ships an optional TUI for browsing and editing.
 
 ## Why Kevi
 - Single encrypted file, easy to back up and sync
-- CLI‑first UX with Ratatui interface when you want a screen
+- CLI-first UX with an optional Ratatui interface
 - Fast unlock cache with TTL; explicit `kevi lock` to clear it
 - Clipboard helper with TTL and SSH/headless warnings (`--no-copy` / `--echo` available)
 - Built‑in generator (passwords or passphrases) with env/config overrides
 - TOTP storage and code generation with JSON output for scripting
-- Profiles for multi‑vault setups; configurable vault paths and backups
+- Profiles for multi-vault setups; configurable vault paths and backups
+
+## Who Kevi is for
+
+- You want a local, terminal-first password manager with one encrypted vault file.
+- You prefer scripting and automation-friendly commands with JSON output when needed.
+- You want optional TUI convenience without depending on a full desktop app.
+
+Kevi is likely not a fit if you need a built-in sync service, web sharing flows, or multi-user access control out of the box.
 
 ## Quick start
 ```bash
+# install from crates.io (if published there)
 cargo install kevi
+
+# or build from source
+cargo build --release
+./target/release/kevi --help
 
 # create a vault (prompts for a master password)
 kevi init --path ~/.kevi/vault.ron
@@ -41,12 +54,35 @@ kevi otp get github --echo
 kevi tui
 ```
 
+## Most used commands
+
+- `kevi init --path <FILE>`: create vault.
+- `kevi add --label <KEY> --generate`: add entry.
+- `kevi get <KEY> --echo`: print field (clipboard copy is default unless `--no-copy`).
+- `kevi list --query <SUBSTR>`: find entries quickly.
+- `kevi unlock --ttl <SECONDS>` / `kevi lock`: manage derived-key cache.
+- `kevi otp add|get|list|rm ...`: manage and generate TOTP codes.
+
+## Defaults at a glance
+
+- Clipboard TTL: `20s`.
+- Unlock cache TTL: `900s`.
+- Backups per write: `2`.
+- Generator defaults: length `20`, lower+upper+digits+symbols on, ambiguous avoided, passphrase off (6 words, `:` separator).
+
 ## How Kevi picks paths and TTLs
 - Vault resolution (highest precedence): `--path` → `--profile` (from config) → `KEVI_VAULT_PATH` → `config.toml` `vault_path` → default `$KEVI_DATA_DIR/kevi/vault.ron` (or `~/.kevi/vault.ron`).
 - Clipboard TTL: CLI `--ttl` → env `KEVI_CLIP_TTL` → config `clipboard_ttl` → default `20s`.
 - Unlock cache TTL: CLI `--ttl` → env `KEVI_UNLOCK_TTL` → default `900s`.
-- Generator defaults (`GenPolicy`): length 20, lower+upper+digits+symbols on, ambiguous avoided, passphrase off (6 words, `:` separator). Override with CLI flags or `KEVI_GEN_*` env vars.
-- Backups kept per write: env `KEVI_BACKUPS` → config `backups` → default 2.
+- Generator: CLI flags override `KEVI_GEN_*` env vars, which override `config.toml` generator keys, which override built-in defaults.
+- Backups kept per write: env `KEVI_BACKUPS` → config `backups` → built-in default.
+
+## Common first-run pitfalls
+
+- `kevi get` and `kevi otp get` copy to clipboard by default. Use `--no-copy` (and usually `--echo`) when running over SSH/headless.
+- `KEVI_PASSWORD` enables non-interactive usage; without it, commands that need a key may prompt.
+- `--once` bypasses the derived-key cache for that command and does not refresh cache state.
+- If output seems empty, verify you are targeting the expected vault path/profile (`--path` / `--profile`).
 
 ## CLI commands and options
 Global option: `--profile <name>` resolves vault path via a named profile before other fallbacks.
@@ -123,7 +159,7 @@ Global option: `--profile <name>` resolves vault path via a named profile before
   - `--path <FILE>`: vault override.
   - `--yes`: skip confirmation.
 
-### Profiles (multi‑vault)
+### Profiles (multi-vault)
 
 - `kevi profile list` — Show all configured profiles and the default, if set.
   - No options; prints profiles and default.
@@ -138,6 +174,33 @@ Global option: `--profile <name>` resolves vault path via a named profile before
   - `<name>`: set default profile; omit to show current.
   - `--clear`: remove default profile.
 
+#### Profile examples
+
+```bash
+# add two vault profiles
+kevi profile add work --path ~/.kevi/work.ron
+kevi profile add personal --path ~/.kevi/personal.ron
+
+# set default profile
+kevi profile default work
+
+# use default profile
+kevi list
+
+# override per command
+kevi --profile personal list
+```
+
+### JSON output examples
+
+```bash
+# vault list as JSON
+kevi list --json
+
+# OTP code as JSON (for scripts)
+kevi otp get github --json
+```
+
 ## Configuration & environment
 
 - Config file: `$XDG_CONFIG_HOME/kevi/config.toml` (or `~/.config/kevi/config.toml`); override base dir with `KEVI_CONFIG_DIR`.
@@ -150,16 +213,17 @@ Global option: `--profile <name>` resolves vault path via a named profile before
 
 - Argon2id KDF, AES‑256‑GCM encryption; secrets handled with `secrecy`.
 - Optional `memlock` feature on Unix to reduce swapping risk.
-- Clipboard TTL is best‑effort; prefer `--no-copy`/`--echo` in sensitive or remote sessions.
+- Clipboard TTL is best‑effort and platform-dependent; prefer `--no-copy`/`--echo` in sensitive or remote sessions.
+- Kevi stores data in one encrypted local file; it does not include a built-in remote sync backend.
 
 ## Development
 
 ```bash
 cargo fmt --all
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all
+cargo test --workspace
 # Linux with locked memory support
-cargo test --all --features memlock
+cargo test --workspace --features memlock
 ```
 
 ### Code coverage
@@ -177,9 +241,9 @@ This will create an HTML report under a `coverage-html` directory.
 This repository includes a GitHub Actions workflow that runs:
 
 * `cargo fmt --all` (format check)
-* `cargo clippy --all-targets --all-features -- -D warnings`
-* `cargo build --all`
-* `cargo test --all` (with and without `memlock` on Linux)
+* `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+* `cargo build --workspace`
+* `cargo test --workspace` (with and without `memlock` on Linux)
 * `cargo audit` (via a dedicated job)
 * `cargo llvm-cov` for coverage reporting
 

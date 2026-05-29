@@ -1,5 +1,6 @@
 use crate::config::app_config::Config;
-use anyhow::{anyhow, Result};
+use crate::domain::VaultResult;
+use crate::error::KeviError;
 use copypasta::{ClipboardContext, ClipboardProvider};
 use secrecy::{ExposeSecret, SecretString};
 use std::sync::{Arc, Mutex};
@@ -7,8 +8,8 @@ use std::thread;
 use std::time::Duration;
 
 pub trait ClipboardEngine: Send + Sync + 'static {
-    fn get_contents(&self) -> Result<Option<String>>;
-    fn set_contents(&self, contents: &str) -> Result<()>;
+    fn get_contents(&self) -> VaultResult<Option<String>>;
+    fn set_contents(&self, contents: &str) -> VaultResult<()>;
 }
 
 pub struct SystemClipboardEngine {
@@ -16,9 +17,9 @@ pub struct SystemClipboardEngine {
 }
 
 impl SystemClipboardEngine {
-    pub fn new() -> Result<Self> {
-        let ctx =
-            ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
+    pub fn new() -> VaultResult<Self> {
+        let ctx = ClipboardContext::new()
+            .map_err(|e| KeviError::io(format!("Failed to access clipboard: {e}")))?;
         Ok(Self {
             ctx: Mutex::new(ctx),
         })
@@ -26,7 +27,7 @@ impl SystemClipboardEngine {
 }
 
 impl ClipboardEngine for SystemClipboardEngine {
-    fn get_contents(&self) -> Result<Option<String>> {
+    fn get_contents(&self) -> VaultResult<Option<String>> {
         let mut guard = self.ctx.lock().unwrap();
         match guard.get_contents() {
             Ok(s) => Ok(Some(s)),
@@ -34,11 +35,11 @@ impl ClipboardEngine for SystemClipboardEngine {
         }
     }
 
-    fn set_contents(&self, contents: &str) -> Result<()> {
+    fn set_contents(&self, contents: &str) -> VaultResult<()> {
         let mut guard = self.ctx.lock().unwrap();
         guard
             .set_contents(contents.to_string())
-            .map_err(|e| anyhow!("Failed to copy to clipboard: {e}"))
+            .map_err(|e| KeviError::io(format!("Failed to copy to clipboard: {e}")))
     }
 }
 
@@ -46,7 +47,7 @@ pub fn copy_with_ttl(
     engine: Arc<dyn ClipboardEngine>,
     secret: &SecretString,
     ttl: Duration,
-) -> Result<()> {
+) -> VaultResult<()> {
     let previous = engine.get_contents()?;
     engine.set_contents(secret.expose_secret())?;
 
@@ -60,6 +61,19 @@ pub fn copy_with_ttl(
     });
 
     Ok(())
+}
+
+pub enum ClipboardCopyError {
+    Unavailable(KeviError),
+    CopyFailed(KeviError),
+}
+
+pub fn copy_with_ttl_using_system_clipboard(
+    secret: &SecretString,
+    ttl: Duration,
+) -> Result<(), ClipboardCopyError> {
+    let engine = SystemClipboardEngine::new().map_err(ClipboardCopyError::Unavailable)?;
+    copy_with_ttl(Arc::new(engine), secret, ttl).map_err(ClipboardCopyError::CopyFailed)
 }
 
 /// Resolve clipboard TTL seconds with precedence: override > KEVI_CLIP_TTL > config.clipboard_ttl > default (20)

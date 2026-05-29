@@ -7,27 +7,45 @@ use crate::cryptography::primitives::{
     SALT_LEN,
 };
 use crate::domain::VaultResult;
-use crate::error::KeviError;
+use crate::error::VaultError;
 use crate::vault::models::{VaultData, VaultEntry};
 use crate::vault::ports::{ByteStore, HeaderParams, KeyResolver, VaultCodec};
-use anyhow::Context;
+use kevi_core::vault::service::{VaultDomainService, VaultRepository};
 use ring::rand::{SecureRandom, SystemRandom};
 use secrecy::ExposeSecret;
 use std::sync::Arc;
 use zeroize::Zeroize;
 
-pub struct VaultService {
-    store: Arc<dyn ByteStore>,
-    codec: Arc<dyn VaultCodec>,
-    key_resolver: Arc<dyn KeyResolver>,
+pub struct VaultService<
+    StoreType = Arc<dyn ByteStore>,
+    CodecType = Arc<dyn VaultCodec>,
+    ResolverType = Arc<dyn KeyResolver>,
+>
+where
+    StoreType: ByteStore,
+    CodecType: VaultCodec,
+    ResolverType: KeyResolver,
+{
+    store: StoreType,
+    codec: CodecType,
+    key_resolver: ResolverType,
 }
 
-impl VaultService {
-    pub fn new(
-        store: Arc<dyn ByteStore>,
-        codec: Arc<dyn VaultCodec>,
-        key_resolver: Arc<dyn KeyResolver>,
-    ) -> Self {
+impl<StoreType, CodecType, ResolverType> VaultService<StoreType, CodecType, ResolverType>
+where
+    StoreType: ByteStore,
+    CodecType: VaultCodec,
+    ResolverType: KeyResolver,
+{
+    fn domain_service<'service>(
+        &'service self,
+    ) -> VaultDomainService<
+        LoadedVaultRepository<'service, StoreType, CodecType, ResolverType>,
+    > {
+        VaultDomainService::new(LoadedVaultRepository { service: self })
+    }
+
+    pub fn new(store: StoreType, codec: CodecType, key_resolver: ResolverType) -> Self {
         Self {
             store,
             codec,
@@ -41,12 +59,15 @@ impl VaultService {
             return Ok(VaultData::default());
         }
         if !bytes.starts_with(b"KEVI") {
-            return Err(KeviError::vault(
-                "unsupported vault format: missing KEVI header (plaintext is not allowed)",
-            ));
+            return Err(
+                VaultError::Message(
+                    "unsupported vault format: missing KEVI header (plaintext is not allowed)"
+                        .to_string(),
+                )
+                .into(),
+            );
         }
-        let (hdr, _off) = parse_kevi_header(&bytes)
-            .map_err(|e| KeviError::vault(format!("invalid header: {e}")))?;
+        let (hdr, _off) = parse_kevi_header(&bytes).map_err(VaultError::from)?;
         let dk = self.key_resolver.resolve_for_header(&hdr)?;
         // Convert key vec to array for ring API
         let key_vec = dk.key.expose_secret().clone();
@@ -55,7 +76,7 @@ impl VaultService {
         // Best‑effort lock while in use
         let _ = lock_slice(&mut key_arr);
         let pt = decrypt_vault_with_key(&bytes, &key_arr)
-            .context("Failed to decrypt vault (wrong key?)")?;
+            .map_err(|_| VaultError::Message("Failed to decrypt vault (wrong key?)".to_string()))?;
         // Always unlock + zeroize
         let _ = unlock_slice(&mut key_arr);
         key_arr.zeroize();
@@ -67,8 +88,7 @@ impl VaultService {
         let bytes = self.store.read()?;
         if !bytes.is_empty() {
             // Reuse existing header params and salt, generate new nonce
-            let (hdr, _off) = parse_kevi_header(&bytes)
-                .map_err(|e| KeviError::vault(format!("invalid header: {e}")))?;
+            let (hdr, _off) = parse_kevi_header(&bytes).map_err(VaultError::from)?;
             let dk = self.key_resolver.resolve_for_header(&hdr)?;
             let key_vec = dk.key.expose_secret().clone();
             let mut key_arr = [0u8; KEY_LEN];
@@ -91,7 +111,7 @@ impl VaultService {
             let mut salt = [0u8; SALT_LEN];
             SystemRandom::new()
                 .fill(&mut salt)
-                .map_err(|_| anyhow::anyhow!("failed to generate salt"))?;
+                .map_err(|_| VaultError::Message("failed to generate salt".to_string()))?;
             let params = HeaderParams {
                 m_cost_kib,
                 t_cost,
@@ -110,19 +130,37 @@ impl VaultService {
     }
 
     pub fn add_entry(&self, entry: VaultEntry) -> VaultResult<()> {
-        let mut data = self.load()?;
-        data.entries.push(entry);
-        self.save(&data)
+        self.domain_service().add_entry(entry)
     }
 
     pub fn remove_entry(&self, label: &str) -> VaultResult<bool> {
-        let mut data = self.load()?;
-        let before = data.entries.len();
-        data.entries.retain(|e| e.label != label);
-        let removed = data.entries.len() != before;
-        if removed {
-            self.save(&data)?;
-        }
-        Ok(removed)
+        self.domain_service().remove_entry(label)
+    }
+}
+
+struct LoadedVaultRepository<'service, StoreType, CodecType, ResolverType>
+where
+    StoreType: ByteStore,
+    CodecType: VaultCodec,
+    ResolverType: KeyResolver,
+{
+    service: &'service VaultService<StoreType, CodecType, ResolverType>,
+}
+
+impl<'service, StoreType, CodecType, ResolverType> VaultRepository
+    for LoadedVaultRepository<'service, StoreType, CodecType, ResolverType>
+where
+    StoreType: ByteStore,
+    CodecType: VaultCodec,
+    ResolverType: KeyResolver,
+{
+    type Error = crate::error::KeviError;
+
+    fn load(&self) -> VaultResult<VaultData> {
+        self.service.load()
+    }
+
+    fn save(&self, data: &VaultData) -> VaultResult<()> {
+        self.service.save(data)
     }
 }

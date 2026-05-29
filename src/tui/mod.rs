@@ -1,9 +1,10 @@
 pub mod app;
-pub mod theme;
+pub(crate) mod theme;
 pub mod views;
 
-use crate::config::app_config::{Config, Defaults};
-use anyhow::{anyhow, Result};
+use crate::app::wiring::create_vault_service;
+use crate::config::app_config::Config;
+use crate::error::{TuiError, TuiResult};
 use crossterm::event::KeyCode::{self, Char};
 use crossterm::event::{self, Event, KeyEventKind};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
@@ -20,17 +21,13 @@ use self::views::details::render_details;
 use self::views::form::render_form;
 use self::views::list::render_list;
 use crate::filesystem::clipboard::ttl_seconds;
-use crate::filesystem::store::FileByteStore;
-use crate::session_management::resolver::CachedKeyResolver;
 use crate::tui::app::Mode;
-use crate::vault::codec::RonCodec;
-use crate::vault::ports::{ByteStore, KeyResolver, VaultCodec};
 use crate::vault::service::VaultService;
 
 struct TerminalGuard;
 
 impl TerminalGuard {
-    fn activate() -> Result<Self> {
+    fn activate() -> TuiResult<Self> {
         enable_raw_mode()?;
         crossterm::execute!(io::stdout(), crossterm::terminal::EnterAlternateScreen)?;
         Ok(Self)
@@ -48,22 +45,15 @@ impl Drop for TerminalGuard {
     }
 }
 
-pub async fn launch(config: &Config) -> Result<()> {
-    // Compose service (same defaults as CLI flows)
-    let backups = config.backups.unwrap_or(Defaults::BACKUPS);
-    let vault_path: std::path::PathBuf = config.vault_path.clone().into();
-    let store: Arc<dyn ByteStore> =
-        Arc::new(FileByteStore::new_with_backups(vault_path.clone(), backups));
-    let codec: Arc<dyn VaultCodec> = Arc::new(RonCodec);
-    let resolver: Arc<dyn KeyResolver> = Arc::new(CachedKeyResolver::new(vault_path.clone()));
-    let service = Arc::new(VaultService::new(store, codec, resolver));
+pub async fn launch(config: &Config) -> TuiResult<()> {
+    let service = create_vault_service(config);
 
     // Load entries (may prompt for password if no session cache) without blocking the async runtime
     let svc = service.clone();
     let entries = spawn_blocking(move || svc.load())
         .await
-        .map_err(|_| anyhow!("task join error"))?
-        .map_err(|e| anyhow!("failed to load vault for TUI: {}", e))?;
+        .map_err(TuiError::from)?
+        .map_err(|e| TuiError::Message(format!("failed to load vault for TUI: {e}")))?;
 
     let (mut terminal, _guard) = setup_terminal()?;
 
@@ -83,7 +73,7 @@ pub async fn launch(config: &Config) -> Result<()> {
     res
 }
 
-fn setup_terminal() -> Result<(Terminal<CrosstermBackend<io::Stdout>>, TerminalGuard)> {
+fn setup_terminal() -> TuiResult<(Terminal<CrosstermBackend<io::Stdout>>, TerminalGuard)> {
     let guard = TerminalGuard::activate()?;
     let backend = CrosstermBackend::new(io::stdout());
     let terminal = Terminal::new(backend)?;
@@ -93,7 +83,7 @@ fn setup_terminal() -> Result<(Terminal<CrosstermBackend<io::Stdout>>, TerminalG
 fn render_current_view(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &App,
-) -> Result<()> {
+) -> TuiResult<()> {
     terminal.draw(|f| match app.view {
         View::List => render_list(f, app),
         View::Details => render_details(f, app),
@@ -113,13 +103,18 @@ fn next_timeout(last_tick: Instant, tick_rate: Duration) -> Duration {
         .unwrap_or(Duration::from_millis(0))
 }
 
-async fn run_loop(
+async fn run_loop<StoreType, CodecType, ResolverType>(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
     tick_rate: Duration,
     ttl_secs: u64,
-    service: Arc<VaultService>,
-) -> Result<()> {
+    service: Arc<VaultService<StoreType, CodecType, ResolverType>>,
+) -> TuiResult<()>
+where
+    StoreType: crate::vault::ports::ByteStore + 'static,
+    CodecType: crate::vault::ports::VaultCodec + 'static,
+    ResolverType: crate::vault::ports::KeyResolver + 'static,
+{
     let mut last_tick = Instant::now();
     loop {
         render_current_view(terminal, app)?;
@@ -131,8 +126,7 @@ async fn run_loop(
                     if should_quit(k.code, app) {
                         return Ok(());
                     }
-                    app.handle_key_event(k.code, ttl_secs, service.clone())
-                        .await?;
+                    app.handle_key_event(k.code, ttl_secs, service.clone()).await?;
                 }
             }
         }

@@ -1,7 +1,4 @@
-use kevi::session_management::resolver::{
-    dk_session_file_for, save_derived_key_session, DerivedKeyStored,
-};
-use kevi::session_management::session::load;
+use kevi::api::{dk_session_file_for, load, save_derived_key_session, DerivedKey, DerivedKeyStored};
 use secrecy::SecretBox;
 use std::time::Duration;
 use tempfile::tempdir;
@@ -23,7 +20,7 @@ fn dk_session_debug_is_redacted_and_round_trips() {
     assert!(!sess.key_b64.is_empty());
 
     // Test debug redaction on the Domain Object `DerivedKey`
-    let dk = kevi::vault::ports::DerivedKey { key };
+    let dk = DerivedKey { key };
     let dbg = format!("{dk:?}");
     // 0x42 in hex is not directly visible, but let's check for REDACTED
     assert!(dbg.contains("<REDACTED>"));

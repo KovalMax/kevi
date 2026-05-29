@@ -1,22 +1,19 @@
+use crate::app::wiring::create_vault_service;
 use crate::cli::clap_models::{
     Cli, Commands, GetFieldArg, OtpAlgorithmArg, OtpCommand, ProfileCommand,
 };
 use crate::config::app_config::{
-    load_file_config_with_path, save_file_config, Config, Defaults, FileProfileConfig,
+    load_file_config_with_path, save_file_config, Config, FileProfileConfig,
 };
 use crate::domain::{EntryLabel, OtpName};
 use crate::error::KeviError;
-use crate::filesystem::store::FileByteStore;
 use crate::otp::handlers::{
     OtpAddOptions, OtpGetOptions, OtpHandlers, OtpListOptions, OtpRemoveOptions,
 };
 use crate::otp::models::OtpAlgorithm;
-use crate::session_management::resolver::CachedKeyResolver;
 use crate::tui;
-use crate::vault::codec::RonCodec;
 use crate::vault::handlers::{GetField, Vault};
 use crate::vault::models::AddOptions;
-use crate::vault::ports::{ByteStore, KeyResolver, VaultCodec};
 use crate::vault::service::VaultService;
 use clap::Parser;
 use std::path::PathBuf;
@@ -138,21 +135,17 @@ pub async fn run() -> Result<(), KeviError> {
                 .map_err(|e| KeviError::tui(e.to_string()))?;
         }
         Commands::Profile(cmd) => {
-            handle_profile_commands(cmd)
-                .await
-                .map_err(|e| KeviError::cli(e.to_string()))?;
+            handle_profile_commands(cmd).await?;
         }
         Commands::Otp(cmd) => {
-            handle_otp_commands(cmd, cli.profile.clone())
-                .await
-                .map_err(|e| KeviError::vault(e.to_string()))?;
+            handle_otp_commands(cmd, cli.profile.clone()).await?;
         }
     }
 
     Ok(())
 }
 
-async fn handle_profile_commands(cmd: ProfileCommand) -> anyhow::Result<()> {
+async fn handle_profile_commands(cmd: ProfileCommand) -> Result<(), KeviError> {
     let (path, mut cfg) = load_file_config_with_path();
     let profiles = cfg.profiles.get_or_insert_with(Default::default);
 
@@ -176,7 +169,10 @@ async fn handle_profile_commands(cmd: ProfileCommand) -> anyhow::Result<()> {
             if let Some(p) = profiles.get(&name) {
                 println!("profile: {name}\n  vault_path: {}", p.vault_path);
             } else {
-                anyhow::bail!("profile \"{name}\" is not defined; run `kevi profile list` to see available profiles");
+                return Err(ProfileCommandError::Message(format!(
+                    "profile \"{name}\" is not defined; run `kevi profile list` to see available profiles"
+                ))
+                .into());
             }
         }
         ProfileCommand::Add {
@@ -185,9 +181,10 @@ async fn handle_profile_commands(cmd: ProfileCommand) -> anyhow::Result<()> {
             on_duplicate_override,
         } => {
             if profiles.contains_key(&name) && !on_duplicate_override {
-                anyhow::bail!(
+                return Err(ProfileCommandError::Message(format!(
                     "profile \"{name}\" already exists; use --on-duplicate-override to update it"
-                );
+                ))
+                .into());
             }
             profiles.insert(
                 name.clone(),
@@ -199,14 +196,18 @@ async fn handle_profile_commands(cmd: ProfileCommand) -> anyhow::Result<()> {
         }
         ProfileCommand::Rm { name } => {
             if cfg.default_profile.as_deref() == Some(name.as_str()) {
-                anyhow::bail!(
+                return Err(ProfileCommandError::Message(format!(
                     "cannot remove default profile \"{name}\"; run `kevi profile default --clear` or change default first"
-                );
+                ))
+                .into());
             }
             if profiles.remove(&name).is_some() {
                 println!("Removed profile \"{name}\".");
             } else {
-                anyhow::bail!("profile \"{name}\" is not defined; run `kevi profile list`.");
+                return Err(ProfileCommandError::Message(format!(
+                    "profile \"{name}\" is not defined; run `kevi profile list`."
+                ))
+                .into());
             }
         }
         ProfileCommand::Default { name, clear } => {
@@ -218,7 +219,10 @@ async fn handle_profile_commands(cmd: ProfileCommand) -> anyhow::Result<()> {
                     cfg.default_profile = Some(name.clone());
                     println!("Default profile set to \"{name}\".");
                 } else {
-                    anyhow::bail!("profile \"{name}\" is not defined; run `kevi profile list`.");
+                    return Err(ProfileCommandError::Message(format!(
+                        "profile \"{name}\" is not defined; run `kevi profile list`."
+                    ))
+                    .into());
                 }
             } else {
                 match cfg.default_profile.as_deref() {
@@ -229,8 +233,24 @@ async fn handle_profile_commands(cmd: ProfileCommand) -> anyhow::Result<()> {
         }
     }
 
-    save_file_config(&path, &cfg).await?;
+    save_file_config(&path, &cfg)
+        .await
+        .map_err(ProfileCommandError::from)?;
     Ok(())
+}
+
+#[derive(Debug, thiserror::Error)]
+enum ProfileCommandError {
+    #[error("{0}")]
+    Message(String),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+}
+
+impl From<ProfileCommandError> for KeviError {
+    fn from(err: ProfileCommandError) -> Self {
+        KeviError::cli(err.to_string())
+    }
 }
 
 fn map_algo_arg(arg: OtpAlgorithmArg) -> OtpAlgorithm {
@@ -241,7 +261,7 @@ fn map_algo_arg(arg: OtpAlgorithmArg) -> OtpAlgorithm {
     }
 }
 
-async fn handle_otp_commands(cmd: OtpCommand, profile: Option<String>) -> anyhow::Result<()> {
+async fn handle_otp_commands(cmd: OtpCommand, profile: Option<String>) -> Result<(), KeviError> {
     match cmd {
         OtpCommand::Add {
             name,
@@ -271,7 +291,7 @@ async fn handle_otp_commands(cmd: OtpCommand, profile: Option<String>) -> anyhow
                 notes,
                 on_duplicate_override,
             };
-            handlers.handle_add(&opts).await
+            handlers.handle_add(&opts).await.map_err(KeviError::from)
         }
         OtpCommand::Get {
             name,
@@ -293,14 +313,14 @@ async fn handle_otp_commands(cmd: OtpCommand, profile: Option<String>) -> anyhow
                 once,
                 json,
             };
-            handlers.handle_get(opts).await
+            handlers.handle_get(opts).await.map_err(KeviError::from)
         }
         OtpCommand::List { path, query, json } => {
             let (config, service) =
                 create_config_and_vault_service(path.map(PathBuf::from), profile.clone())?;
             let handlers = OtpHandlers::create(&config, service);
             let opts = OtpListOptions { query, json };
-            handlers.handle_list(opts).await
+            handlers.handle_list(opts).await.map_err(KeviError::from)
         }
         OtpCommand::Rm { name, path, yes } => {
             let (config, service) =
@@ -310,7 +330,7 @@ async fn handle_otp_commands(cmd: OtpCommand, profile: Option<String>) -> anyhow
                 name: OtpName::from(name),
                 yes,
             };
-            handlers.handle_remove(opts).await
+            handlers.handle_remove(opts).await.map_err(KeviError::from)
         }
     }
 }
@@ -320,13 +340,7 @@ fn create_config_and_vault_service(
     profile: Option<String>,
 ) -> Result<(Config, Arc<VaultService>), KeviError> {
     let config = load_config(path, profile)?;
-    let backups = config.backups.unwrap_or(Defaults::BACKUPS);
-    let vault_path: PathBuf = config.vault_path.clone().into();
-    let store: Arc<dyn ByteStore> =
-        Arc::new(FileByteStore::new_with_backups(vault_path.clone(), backups));
-    let codec: Arc<dyn VaultCodec> = Arc::new(RonCodec);
-    let key_resolver: Arc<dyn KeyResolver> = Arc::new(CachedKeyResolver::new(vault_path));
-    let service = Arc::new(VaultService::new(store, codec, key_resolver));
+    let service = create_vault_service(&config);
 
     Ok((config, service))
 }

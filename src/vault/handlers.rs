@@ -1,4 +1,5 @@
-use crate::config::app_config::{Config, Defaults};
+use crate::app::wiring::{create_vault_service, create_vault_service_bypass_cache};
+use crate::config::app_config::Config;
 use crate::cryptography::generator::{
     estimate_bits_char_mode, estimate_bits_passphrase, strength_label, DefaultPasswordGenerator,
     SystemRng,
@@ -11,17 +12,15 @@ use crate::cryptography::wordlist::WORDS;
 use crate::domain::{EntryLabel, VaultResult};
 use crate::error::KeviError;
 use crate::filesystem::clipboard::{
-    copy_with_ttl, environment_warning, ttl_seconds, ClipboardEngine, SystemClipboardEngine,
+    copy_with_ttl_using_system_clipboard, environment_warning, ttl_seconds, ClipboardCopyError,
 };
-use crate::filesystem::store::FileByteStore;
 use crate::session_management::resolver::{
-    dk_session_file_for, save_derived_key_session, BypassKeyResolver, CachedKeyResolver,
+    dk_session_file_for, save_derived_key_session,
 };
 use crate::session_management::session::clear;
-use crate::vault::codec::RonCodec;
 use crate::vault::models::{AddOptions, VaultData, VaultEntry};
 use crate::vault::persistence::save_vault_file;
-use crate::vault::ports::{ByteStore, GenPolicy, KeyResolver, PasswordGenerator, Rng, VaultCodec};
+use crate::vault::ports::{CoreRng, GenPolicy, PasswordGenerator};
 use crate::vault::service::VaultService;
 use inquire::{Confirm, Password, Text};
 use secrecy::{ExposeSecret, SecretBox, SecretString};
@@ -50,8 +49,8 @@ impl Display for GetField {
     }
 }
 
-pub struct Vault<'a> {
-    config: &'a Config,
+pub struct Vault<'config> {
+    config: &'config Config,
     service: Arc<VaultService>,
 }
 
@@ -63,19 +62,48 @@ fn vault_error<E: Display>(context: &str, err: E) -> KeviError {
     KeviError::vault(format!("{context} - {err}"))
 }
 
-impl<'a> Vault<'a> {
-    pub fn create(config: &'a Config) -> Self {
-        // Compose default adapters
-        let backups = config.backups.unwrap_or(Defaults::BACKUPS);
-        let vault_path: std::path::PathBuf = config.vault_path.clone().into();
-        let store: Arc<dyn ByteStore> =
-            Arc::new(FileByteStore::new_with_backups(vault_path.clone(), backups));
-        let codec: Arc<dyn VaultCodec> = Arc::new(RonCodec);
-        let key_resolver: Arc<dyn KeyResolver> =
-            Arc::new(CachedKeyResolver::new(vault_path.clone()));
-        let service = Arc::new(VaultService::new(store, codec, key_resolver));
+impl<'config> Vault<'config> {
+    pub fn create(config: &'config Config) -> Self {
+        let service = create_vault_service(config);
 
         Vault { config, service }
+    }
+
+    fn read_service(&self, once: bool) -> Arc<VaultService> {
+        if once {
+            create_vault_service_bypass_cache(self.config)
+        } else {
+            self.service.clone()
+        }
+    }
+
+    async fn load_vault(service: Arc<VaultService>) -> VaultResult<VaultData> {
+        spawn_blocking(move || service.load())
+            .await
+            .map_err(|_| join_error("loading vault"))?
+            .map_err(|error| vault_error("failed to load vault", error))
+    }
+
+    async fn save_vault(service: Arc<VaultService>, data: VaultData) -> VaultResult<()> {
+        spawn_blocking(move || service.save(&data))
+            .await
+            .map_err(|_| join_error("saving vault"))?
+            .map_err(|error| vault_error("failed to save vault", error))
+    }
+
+    fn find_entry_by_label<'vault_data>(
+        vault_data: &'vault_data VaultData,
+        key: &str,
+    ) -> Option<&'vault_data VaultEntry> {
+        vault_data.entries.iter().find(|entry| entry.label == key)
+    }
+
+    fn has_entry(vault_data: &VaultData, key: &str) -> bool {
+        vault_data.entries.iter().any(|entry| entry.label == key)
+    }
+
+    fn print_entry_not_found(key: &str) {
+        println!("❌ No entry found with key '{key}'");
     }
 
     pub async fn handle_header(&self) -> VaultResult<()> {
@@ -126,30 +154,11 @@ impl<'a> Vault<'a> {
         echo: bool,
         once: bool,
     ) -> VaultResult<()> {
-        // Load entries, optionally bypassing session cache for this call using a temp resolver
-        let vault = if once {
-            let backups = self.config.backups.unwrap_or(Defaults::BACKUPS);
-            let vault_path: std::path::PathBuf = self.config.vault_path.clone().into();
-            let store: Arc<dyn ByteStore> =
-                Arc::new(FileByteStore::new_with_backups(vault_path.clone(), backups));
-            let codec: Arc<dyn VaultCodec> = Arc::new(RonCodec);
-            let resolver: Arc<dyn KeyResolver> = Arc::new(BypassKeyResolver::new());
-            let svc = Arc::new(VaultService::new(store, codec, resolver));
-            spawn_blocking(move || svc.load())
-                .await
-                .map_err(|_| join_error("loading vault"))?
-                .map_err(|e| vault_error("failed to load vault", e))?
-        } else {
-            let svc = self.service.clone();
-            spawn_blocking(move || svc.load())
-                .await
-                .map_err(|_| join_error("loading vault"))?
-                .map_err(|e| vault_error("failed to load vault", e))?
-        };
-        let entry = match vault.entries.iter().find(|e| e.label == key) {
+        let vault = Self::load_vault(self.read_service(once)).await?;
+        let entry = match Self::find_entry_by_label(&vault, key) {
             Some(e) => e,
             None => {
-                println!("❌ No entry found with key '{key}'");
+                Self::print_entry_not_found(key);
                 return Ok(());
             }
         };
@@ -190,18 +199,14 @@ impl<'a> Vault<'a> {
         if let Some(warn) = environment_warning() {
             eprintln!("⚠️ {warn}");
         }
-        match SystemClipboardEngine::new() {
-            Ok(engine_impl) => {
-                let engine = Arc::new(engine_impl) as Arc<dyn ClipboardEngine>;
-                let secret = SecretString::new(value.into());
-                if let Err(e) = copy_with_ttl(engine, &secret, ttl) {
-                    eprintln!("⚠️ Failed to copy to clipboard: {e}");
-                } else {
-                    // Successful copy: do not print secrets or confirmations to stdout by default.
-                }
+        let secret = SecretString::new(value.into());
+        match copy_with_ttl_using_system_clipboard(&secret, ttl) {
+            Ok(()) => {}
+            Err(ClipboardCopyError::Unavailable(error)) => {
+                eprintln!("⚠️ Clipboard not available: {error}");
             }
-            Err(e) => {
-                eprintln!("⚠️ Clipboard not available: {e}");
+            Err(ClipboardCopyError::CopyFailed(error)) => {
+                eprintln!("⚠️ Failed to copy to clipboard: {error}");
             }
         }
 
@@ -209,13 +214,9 @@ impl<'a> Vault<'a> {
     }
 
     pub async fn handle_show(&self, key: &str, reveal_password: bool) -> VaultResult<()> {
-        let svc = self.service.clone();
-        let data = spawn_blocking(move || svc.load())
-            .await
-            .map_err(|_| join_error("loading vault"))?
-            .map_err(|e| vault_error("failed to load vault", e))?;
+        let data = Self::load_vault(self.service.clone()).await?;
 
-        if let Some(entry) = data.entries.iter().find(|e| e.label == key) {
+        if let Some(entry) = Self::find_entry_by_label(&data, key) {
             println!("Label:    {}", entry.label);
             if let Some(user) = &entry.username {
                 println!("Username: {}", user.expose_secret());
@@ -240,12 +241,7 @@ impl<'a> Vault<'a> {
     }
 
     pub async fn handle_add(&self, opts: AddOptions) -> VaultResult<()> {
-        // Load existing entries first
-        let svc_load = self.service.clone();
-        let mut vault = spawn_blocking(move || svc_load.load())
-            .await
-            .map_err(|_| join_error("loading vault"))?
-            .map_err(|e| vault_error("failed to load vault", e))?;
+        let mut vault = Self::load_vault(self.service.clone()).await?;
 
         // Determine label/username/notes (use provided flags or prompt)
         let label = if let Some(l) = opts.label.clone() {
@@ -304,7 +300,7 @@ impl<'a> Vault<'a> {
                     avoid_from_cfg
                 };
             }
-            let rng: Arc<dyn Rng> = Arc::new(SystemRng);
+            let rng: Arc<dyn CoreRng<Error = KeviError>> = Arc::new(SystemRng);
             let gen = DefaultPasswordGenerator::new(rng);
             let generated = gen.generate(&policy)?;
             // Show a basic strength hint (interactive UX), without echoing the secret
@@ -335,11 +331,7 @@ impl<'a> Vault<'a> {
         };
 
         vault.entries.push(entry);
-        let svc_save = self.service.clone();
-        spawn_blocking(move || svc_save.save(&vault))
-            .await
-            .map_err(|_| join_error("saving vault"))?
-            .map_err(|e| vault_error("failed to save vault", e))?;
+        Self::save_vault(self.service.clone(), vault).await?;
         println!("✅ Entry saved.");
 
         Ok(())
@@ -347,13 +339,9 @@ impl<'a> Vault<'a> {
 
     pub async fn handle_rm(&self, key: &str, yes: bool) -> VaultResult<()> {
         // Load to check existence and optionally confirm
-        let svc_load = self.service.clone();
-        let data = spawn_blocking(move || svc_load.load())
-            .await
-            .map_err(|_| join_error("loading vault"))?
-            .map_err(|e| vault_error("failed to load vault", e))?;
-        if !data.entries.iter().any(|e| e.label == key) {
-            println!("❌ No entry found with key '{key}'");
+        let data = Self::load_vault(self.service.clone()).await?;
+        if !Self::has_entry(&data, key) {
+            Self::print_entry_not_found(key);
             return Ok(());
         }
 
@@ -376,7 +364,7 @@ impl<'a> Vault<'a> {
             println!("🗑️ Entry '{key}' removed.");
         } else {
             // Should not happen due to pre-check, but handle race
-            println!("❌ No entry found with key '{key}'");
+            Self::print_entry_not_found(key);
         }
         Ok(())
     }
@@ -387,11 +375,7 @@ impl<'a> Vault<'a> {
         show_users: bool,
         json_mode: bool,
     ) -> VaultResult<()> {
-        let svc = self.service.clone();
-        let mut data = spawn_blocking(move || svc.load())
-            .await
-            .map_err(|_| join_error("loading vault"))?
-            .map_err(|e| vault_error("failed to load vault", e))?;
+        let mut data = Self::load_vault(self.service.clone()).await?;
 
         // Filter by query (case-insensitive) on a label
         if let Some(q) = query {

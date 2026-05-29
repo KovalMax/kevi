@@ -1,25 +1,5 @@
-use crate::cryptography::types::secret_string;
-use crate::cryptography::types::secret_string_option;
 use crate::domain::EntryLabel;
-use crate::otp::models::OtpEntry;
-use secrecy::SecretString;
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct VaultEntry {
-    pub label: EntryLabel,
-    #[serde(default, with = "secret_string_option")]
-    pub username: Option<SecretString>,
-    #[serde(with = "secret_string")]
-    pub password: SecretString,
-    pub notes: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct VaultData {
-    pub entries: Vec<VaultEntry>,
-    pub otps: Vec<OtpEntry>,
-}
+pub use kevi_core::vault::models::{VaultData, VaultEntry};
 
 // Options for the add command, constructed by CLI layer
 #[derive(Debug, Clone)]

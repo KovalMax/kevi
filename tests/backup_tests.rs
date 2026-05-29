@@ -1,6 +1,4 @@
-use kevi::cryptography::primitives::decrypt_vault;
-use kevi::vault::models::{VaultData, VaultEntry};
-use kevi::vault::persistence::save_vault_file;
+use kevi::api::{decrypt_vault, save_vault_file, VaultData, VaultEntry};
 use secrecy::SecretString;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;

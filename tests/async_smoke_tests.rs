@@ -1,7 +1,4 @@
-use kevi::config::app_config::Config;
-use kevi::vault::handlers::Vault;
-use kevi::vault::models::{VaultData, VaultEntry};
-use kevi::vault::persistence::save_vault_file;
+use kevi::api::{save_vault_file, Config, Vault, VaultData, VaultEntry};
 use secrecy::SecretString;
 use tempfile::tempdir;
 

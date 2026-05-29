@@ -1,7 +1,4 @@
-use kevi::otp::models::{OtpAlgorithm, OtpEntry};
-use kevi::vault::codec::RonCodec;
-use kevi::vault::models::{VaultData, VaultEntry};
-use kevi::vault::ports::VaultCodec;
+use kevi::api::{OtpAlgorithm, OtpEntry, RonCodec, VaultCodec, VaultData, VaultEntry};
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
 

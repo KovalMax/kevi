@@ -2,7 +2,6 @@ use ratatui::style::{Color, Modifier, Style};
 
 #[derive(Clone, Debug)]
 pub struct Theme {
-    pub bg: Color,
     pub fg: Color,
     pub primary: Color,
     pub accent: Color,
@@ -14,7 +13,6 @@ impl Default for Theme {
     fn default() -> Self {
         // NES/SEGA inspired palette
         Self {
-            bg: Color::Black,
             fg: Color::White,
             primary: Color::Blue,
             accent: Color::Red,

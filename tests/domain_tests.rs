@@ -1,4 +1,4 @@
-use kevi::domain::{EntryLabel, OtpName, ProfileName, VaultPath};
+use kevi::api::{EntryLabel, OtpName, ProfileName, VaultPath};
 use std::path::PathBuf;
 
 #[test]

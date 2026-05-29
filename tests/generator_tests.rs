@@ -1,9 +1,7 @@
-use anyhow::Result;
-use kevi::cryptography::generator::{
-    estimate_bits_char_mode, estimate_bits_passphrase, strength_label, DefaultPasswordGenerator,
+use kevi::api::{
+    estimate_bits_char_mode, estimate_bits_passphrase, strength_label, CoreRng,
+    DefaultPasswordGenerator, GenPolicy, KeviError, PasswordGenerator,
 };
-use kevi::error::KeviError;
-use kevi::vault::ports::{GenPolicy, PasswordGenerator, Rng};
 use std::sync::Arc;
 
 struct MockRng {
@@ -16,7 +14,9 @@ impl MockRng {
         }
     }
 }
-impl Rng for MockRng {
+impl CoreRng for MockRng {
+    type Error = KeviError;
+
     fn fill(&self, bytes: &mut [u8]) -> Result<(), KeviError> {
         let mut guard = self.data.lock().unwrap();
         if guard.is_empty() {
@@ -43,7 +43,9 @@ impl SeqRng {
     }
 }
 
-impl Rng for SeqRng {
+impl CoreRng for SeqRng {
+    type Error = KeviError;
+
     fn fill(&self, bytes: &mut [u8]) -> Result<(), KeviError> {
         let mut guard = self.data.lock().unwrap();
         let val = if guard.is_empty() { 0 } else { guard.remove(0) };

@@ -1,6 +1,5 @@
 use assert_cmd::prelude::*;
-use kevi::vault::models::{VaultData, VaultEntry};
-use kevi::vault::persistence::save_vault_file;
+use kevi::api::{save_vault_file, VaultData, VaultEntry};
 use predicates::prelude::*;
 use secrecy::SecretString;
 use std::fs;

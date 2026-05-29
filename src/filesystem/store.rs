@@ -1,7 +1,7 @@
 use crate::domain::VaultResult;
 use crate::error::KeviError;
 use crate::filesystem::secure::write_with_backups_n;
-use crate::vault::ports::ByteStore;
+use crate::vault::ports::{ByteStore, CoreByteStore};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -23,7 +23,9 @@ impl FileByteStore {
     }
 }
 
-impl ByteStore for FileByteStore {
+impl CoreByteStore for FileByteStore {
+    type Error = KeviError;
+
     fn read(&self) -> VaultResult<Vec<u8>> {
         let path = &self.path;
         if !Path::new(path).exists() {
@@ -42,5 +44,15 @@ impl ByteStore for FileByteStore {
             Ok(()) => Ok(()),
             Err(e) => Err(KeviError::vault(e.to_string())),
         }
+    }
+}
+
+impl ByteStore for FileByteStore {
+    fn read(&self) -> VaultResult<Vec<u8>> {
+        CoreByteStore::read(self)
+    }
+
+    fn write(&self, bytes: &[u8]) -> VaultResult<()> {
+        CoreByteStore::write(self, bytes)
     }
 }

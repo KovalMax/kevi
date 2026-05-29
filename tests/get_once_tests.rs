@@ -4,9 +4,7 @@ use secrecy::SecretString;
 use std::process::Command;
 use tempfile::tempdir;
 
-use kevi::session_management::resolver::dk_session_file_for;
-use kevi::vault::models::{VaultData, VaultEntry};
-use kevi::vault::persistence::save_vault_file;
+use kevi::api::{dk_session_file_for, save_vault_file, VaultData, VaultEntry};
 
 #[test]
 fn get_once_bypasses_session_cache_and_does_not_create_it() {

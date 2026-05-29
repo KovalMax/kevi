@@ -1,15 +1,10 @@
-use anyhow::Result;
-use kevi::config::app_config::Config;
-use kevi::cryptography::primitives::{default_params, derive_key_argon2id, KeviHeader, SALT_LEN};
-use kevi::domain::{VaultPath, VaultResult};
-use kevi::error::KeviError;
-use kevi::otp::handlers::{
-    OtpAddOptions, OtpGetOptions, OtpHandlers, OtpListOptions, OtpRemoveOptions,
+use kevi::api::Config;
+use kevi::api::{
+    default_params, derive_key_argon2id, ByteStore, DerivedKey, HeaderParams, KeviError,
+    KeviHeader, KeyResolver, OtpAddOptions, OtpAlgorithm, OtpGetOptions, OtpHandlers,
+    OtpListOptions, OtpRemoveOptions, VaultCodec, VaultData, VaultPath, VaultResult,
+    VaultService, SALT_LEN,
 };
-use kevi::otp::models::OtpAlgorithm;
-use kevi::vault::models::VaultData;
-use kevi::vault::ports::{ByteStore, DerivedKey, HeaderParams, KeyResolver, VaultCodec};
-use kevi::vault::service::VaultService;
 use rand::{rng, RngCore};
 use secrecy::{ExposeSecret, SecretBox};
 use std::path::PathBuf;
@@ -78,13 +73,17 @@ impl FixedKeyResolver {
 }
 
 impl KeyResolver for FixedKeyResolver {
-    fn resolve_for_header(&self, _hdr: &KeviHeader) -> Result<DerivedKey> {
+    fn resolve_for_header(&self, _hdr: &KeviHeader) -> VaultResult<DerivedKey> {
         Ok(DerivedKey {
             key: SecretBox::new(Box::new(self.key.expose_secret().clone())),
         })
     }
 
-    fn resolve_for_new_vault(&self, _params: HeaderParams, _salt: [u8; 16]) -> Result<DerivedKey> {
+    fn resolve_for_new_vault(
+        &self,
+        _params: HeaderParams,
+        _salt: [u8; 16],
+    ) -> VaultResult<DerivedKey> {
         Ok(DerivedKey {
             key: SecretBox::new(Box::new(self.key.expose_secret().clone())),
         })

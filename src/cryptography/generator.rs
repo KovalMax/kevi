@@ -1,15 +1,17 @@
-use anyhow::Result;
+use crate::domain::VaultResult;
 use ring::rand::{SecureRandom, SystemRandom};
 use std::sync::Arc;
 
 use crate::cryptography::wordlist::WORDS;
 use crate::error::KeviError;
-use crate::vault::ports::{GenPolicy, PasswordGenerator, Rng};
+use crate::vault::ports::{CorePasswordGenerator, CoreRng, GenPolicy};
 
 pub struct SystemRng;
 
-impl Rng for SystemRng {
-    fn fill(&self, bytes: &mut [u8]) -> Result<(), KeviError> {
+impl CoreRng for SystemRng {
+    type Error = KeviError;
+
+    fn fill(&self, bytes: &mut [u8]) -> VaultResult<()> {
         let rng = SystemRandom::new();
         rng.fill(bytes)
             .map_err(|_| KeviError::generator("failed to obtain system randomness"))
@@ -17,25 +19,30 @@ impl Rng for SystemRng {
 }
 
 pub struct DefaultPasswordGenerator {
-    rng: Arc<dyn Rng>,
+    rng: Arc<dyn CoreRng<Error = KeviError>>,
     wordlist: &'static [&'static str],
 }
 
 impl DefaultPasswordGenerator {
-    pub fn new(rng: Arc<dyn Rng>) -> Self {
+    pub fn new(rng: Arc<dyn CoreRng<Error = KeviError>>) -> Self {
         Self {
             rng,
             wordlist: WORDS,
         }
     }
 
-    pub fn new_with_wordlist(rng: Arc<dyn Rng>, wordlist: &'static [&'static str]) -> Self {
+    pub fn new_with_wordlist(
+        rng: Arc<dyn CoreRng<Error = KeviError>>,
+        wordlist: &'static [&'static str],
+    ) -> Self {
         Self { rng, wordlist }
     }
 }
 
-impl PasswordGenerator for DefaultPasswordGenerator {
-    fn generate(&self, policy: &GenPolicy) -> Result<String, KeviError> {
+impl CorePasswordGenerator for DefaultPasswordGenerator {
+    type Error = KeviError;
+
+    fn generate(&self, policy: &GenPolicy) -> VaultResult<String> {
         if policy.passphrase {
             return generate_passphrase(&*self.rng, self.wordlist, policy.words, &policy.sep);
         }
@@ -56,7 +63,7 @@ fn filter_ambiguous(mut v: Vec<u8>) -> Vec<u8> {
     v
 }
 
-fn uniform_index(rng: &dyn Rng, len: usize) -> Result<usize, KeviError> {
+fn uniform_index(rng: &dyn CoreRng<Error = KeviError>, len: usize) -> VaultResult<usize> {
     if len == 0 {
         return Err(KeviError::generator("empty pool"));
     }
@@ -73,7 +80,7 @@ fn uniform_index(rng: &dyn Rng, len: usize) -> Result<usize, KeviError> {
     }
 }
 
-fn fy_shuffle(rng: &dyn Rng, data: &mut [u8]) -> Result<(), KeviError> {
+fn fy_shuffle(rng: &dyn CoreRng<Error = KeviError>, data: &mut [u8]) -> VaultResult<()> {
     if data.len() <= 1 {
         return Ok(());
     }
@@ -84,7 +91,7 @@ fn fy_shuffle(rng: &dyn Rng, data: &mut [u8]) -> Result<(), KeviError> {
     Ok(())
 }
 
-fn generate_chars(rng: &dyn Rng, policy: &GenPolicy) -> Result<String, KeviError> {
+fn generate_chars(rng: &dyn CoreRng<Error = KeviError>, policy: &GenPolicy) -> VaultResult<String> {
     let mut classes: Vec<Vec<u8>> = Vec::new();
     if policy.lower {
         classes.push(LOWER.to_vec());
@@ -147,11 +154,11 @@ fn generate_chars(rng: &dyn Rng, policy: &GenPolicy) -> Result<String, KeviError
 // ===== Passphrase-mode generator =====
 
 fn generate_passphrase(
-    rng: &dyn Rng,
+    rng: &dyn CoreRng<Error = KeviError>,
     wordlist: &'static [&'static str],
     words: u16,
     sep: &str,
-) -> Result<String, KeviError> {
+) -> VaultResult<String> {
     if wordlist.is_empty() {
         return Err(KeviError::generator("wordlist empty"));
     }

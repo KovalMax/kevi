@@ -1,12 +1,14 @@
 use crate::domain::VaultResult;
 use crate::error::KeviError;
 use crate::vault::models::VaultData;
-use crate::vault::ports::VaultCodec;
+use crate::vault::ports::{CoreVaultCodec, VaultCodec};
 use ron::ser::PrettyConfig;
 
 pub struct RonCodec;
 
-impl VaultCodec for RonCodec {
+impl CoreVaultCodec for RonCodec {
+    type Error = KeviError;
+
     fn encode(&self, data: &VaultData) -> VaultResult<Vec<u8>> {
         let pretty = PrettyConfig::new()
             .depth_limit(3)
@@ -23,5 +25,15 @@ impl VaultCodec for RonCodec {
             ron::from_str(&s).map_err(|_| KeviError::vault("Failed to parse vault content"))?;
 
         Ok(vault)
+    }
+}
+
+impl VaultCodec for RonCodec {
+    fn encode(&self, data: &VaultData) -> VaultResult<Vec<u8>> {
+        CoreVaultCodec::encode(self, data)
+    }
+
+    fn decode(&self, data: &[u8]) -> VaultResult<VaultData> {
+        CoreVaultCodec::decode(self, data)
     }
 }

@@ -1,14 +1,12 @@
 use inquire::InquireError;
-use kevi::config::app_config::ConfigError;
-use kevi::cryptography::primitives::HeaderError;
-use kevi::error::KeviError;
+use kevi::api::{ConfigError, HeaderError, KeviError};
 use serde::ser::Error;
 
 #[test]
 fn kevi_error_constructor_messages() {
     let cfg = KeviError::config("missing vault");
     assert!(matches!(cfg, KeviError::Config(_)));
-    assert_eq!(cfg.to_string(), "Configuration error: missing vault");
+    assert_eq!(cfg.to_string(), "profile \"missing vault\" is missing a vault_path");
 
     let vault = KeviError::vault("io failure");
     assert!(matches!(vault, KeviError::Vault(_)));
@@ -50,14 +48,14 @@ fn kevi_error_from_error_uses_display() {
     assert!(matches!(ke, KeviError::Config(_)));
     assert_eq!(
         ke.to_string(),
-        "Configuration error: profile \"work\" is not defined in config.toml"
+        "profile \"work\" is not defined in config.toml"
     );
 
     let err2 = ConfigError::InvalidProfile("home".to_string());
     let ke2: KeviError = err2.into();
     assert_eq!(
         ke2.to_string(),
-        "Configuration error: profile \"home\" is missing a vault_path"
+        "profile \"home\" is missing a vault_path"
     );
 
     let head_err = HeaderError::TooShort;
@@ -65,7 +63,7 @@ fn kevi_error_from_error_uses_display() {
     assert!(matches!(to_ke, KeviError::Vault(_)));
     assert_eq!(
         to_ke.to_string(),
-        "Vault error: Failed to parse header - ciphertext too short for header"
+        "Vault error: invalid header: ciphertext too short for header"
     );
 
     let inq_err = InquireError::OperationCanceled;

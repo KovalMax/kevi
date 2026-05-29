@@ -1,6 +1,4 @@
-use kevi::otp::handlers::OtpAddOptions;
-use kevi::otp::models::{OtpAlgorithm, OtpEntry};
-use kevi::otp::totp::{build_totp, validate_totp_params};
+use kevi::api::{build_totp, validate_totp_params, OtpAddOptions, OtpAlgorithm, OtpEntry};
 
 fn make_otp_options(
     digits: u32,
