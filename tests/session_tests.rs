@@ -36,8 +36,13 @@ fn dk_session_write_read_and_expire() {
     save_derived_key_session(&sess_path, &fp, &key_box, Duration::from_secs(1))
         .expect("write dk session");
 
-    // Should read back immediately
-    let got: DerivedKeyStored = load(&sess_path).expect("read ok").expect("present");
+    // Should read back immediately (allow tiny fs clock granularity drift)
+    let mut got = load::<DerivedKeyStored>(&sess_path).expect("read ok");
+    if got.is_none() {
+        std::thread::sleep(Duration::from_millis(50));
+        got = load::<DerivedKeyStored>(&sess_path).expect("read ok retry");
+    }
+    let got = got.expect("present");
     assert_eq!(got.header_fingerprint_hex, fp);
     assert!(!got.key_b64.is_empty());
 

@@ -253,6 +253,6 @@ You can mirror these steps locally before pushing changes.
 
 Contributions, bug reports, and feature ideas are welcome. When submitting a pull request:
 
-* Run `cargo fmt`, `cargo clippy`, and `cargo test` locally.
+* Run checks in this order: `cargo test --workspace` first, then `cargo fmt --all`, then `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
 * Try to include tests for new functionality where practical.
 * Avoid logging or printing secrets; prefer redacted debug output.

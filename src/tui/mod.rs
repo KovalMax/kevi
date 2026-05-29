@@ -138,3 +138,50 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{next_timeout, should_quit};
+    use crate::tui::app::{App, Mode, View};
+    use crate::vault::models::VaultEntry;
+    use crossterm::event::KeyCode;
+    use secrecy::SecretString;
+    use std::time::{Duration, Instant};
+
+    fn entry(label: &str) -> VaultEntry {
+        VaultEntry {
+            label: label.into(),
+            username: None,
+            password: SecretString::new("pw".to_string().into()),
+            notes: None,
+        }
+    }
+
+    #[test]
+    fn should_quit_only_in_list_normal_on_q() {
+        let mut app = App::new(vec![entry("a")]);
+        app.view = View::List;
+        app.mode = Mode::Normal;
+        assert!(should_quit(KeyCode::Char('q'), &app));
+
+        app.mode = Mode::Search;
+        assert!(!should_quit(KeyCode::Char('q'), &app));
+
+        app.mode = Mode::Normal;
+        app.view = View::Details;
+        assert!(!should_quit(KeyCode::Char('q'), &app));
+
+        app.view = View::List;
+        assert!(!should_quit(KeyCode::Esc, &app));
+    }
+
+    #[test]
+    fn next_timeout_never_returns_negative_duration() {
+        let timeout = next_timeout(Instant::now(), Duration::from_millis(5));
+        assert!(timeout <= Duration::from_millis(5));
+
+        std::thread::sleep(Duration::from_millis(2));
+        let clamped = next_timeout(Instant::now() - Duration::from_millis(2), Duration::ZERO);
+        assert_eq!(clamped, Duration::ZERO);
+    }
+}

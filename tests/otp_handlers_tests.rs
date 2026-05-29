@@ -282,6 +282,23 @@ async fn otp_get_rejects_no_echo_and_no_copy() {
 }
 
 #[tokio::test]
+async fn otp_get_once_non_existing_entry_is_ok() {
+    let h = make_harness();
+
+    let get_opts = OtpGetOptions {
+        name: "missing-once".into(),
+        no_copy: true,
+        echo: true,
+        at: None,
+        once: true,
+        json: false,
+    };
+
+    let result = h.handlers.handle_get(get_opts).await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
 async fn otp_get_json_output_executes() {
     let h = make_harness();
 
