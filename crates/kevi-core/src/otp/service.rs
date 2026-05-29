@@ -29,7 +29,11 @@ where
         override_existing: bool,
     ) -> Result<(), OtpUpsertError<RepositoryType::Error>> {
         let mut vault = self.repository.load().map_err(OtpUpsertError::Repository)?;
-        match vault.otps.iter().position(|existing| existing.name == entry.name) {
+        match vault
+            .otps
+            .iter()
+            .position(|existing| existing.name == entry.name)
+        {
             Some(index) if override_existing => {
                 vault.otps[index] = entry;
             }

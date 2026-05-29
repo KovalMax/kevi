@@ -1,6 +1,6 @@
+use crate::vault::models::VaultData;
 use secrecy::SecretBox;
 use std::result::Result;
-use crate::vault::models::VaultData;
 
 #[derive(Debug, Clone)]
 pub struct GenPolicy {

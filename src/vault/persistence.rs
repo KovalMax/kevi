@@ -16,7 +16,8 @@ pub fn load_vault_file(path: &Path, password: &str) -> VaultResult<VaultData> {
     }
 
     // Read raw bytes
-    let mut file = File::open(path).map_err(|e| KeviError::io(format!("Failed to open vault file: {e}")))?;
+    let mut file =
+        File::open(path).map_err(|e| KeviError::io(format!("Failed to open vault file: {e}")))?;
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)
         .map_err(|e| KeviError::io(format!("Failed to read vault file: {e}")))?;
@@ -38,8 +39,8 @@ pub fn load_vault_file(path: &Path, password: &str) -> VaultResult<VaultData> {
     // Interpret as UTF-8 RON
     let contents = String::from_utf8(data)
         .map_err(|_| KeviError::vault("vault content not valid UTF-8 RON"))?;
-    let vault: VaultData = ron::from_str(&contents)
-        .map_err(|_| KeviError::vault("Failed to parse vault content"))?;
+    let vault: VaultData =
+        ron::from_str(&contents).map_err(|_| KeviError::vault("Failed to parse vault content"))?;
     Ok(vault)
 }
 
@@ -49,8 +50,8 @@ pub fn save_vault_file(data: &VaultData, path: &Path, password: &str) -> VaultRe
         .depth_limit(3)
         .separate_tuple_members(true)
         .enumerate_arrays(true);
-    let serialized = ron::ser::to_string_pretty(data, pretty)
-        .map_err(|e| KeviError::vault(e.to_string()))?;
+    let serialized =
+        ron::ser::to_string_pretty(data, pretty).map_err(|e| KeviError::vault(e.to_string()))?;
     let ciphertext = encrypt_vault(serialized.as_bytes(), password)?;
     write_with_backups(path, &ciphertext)
 }

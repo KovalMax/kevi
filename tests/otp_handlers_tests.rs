@@ -2,8 +2,8 @@ use kevi::api::Config;
 use kevi::api::{
     default_params, derive_key_argon2id, ByteStore, DerivedKey, HeaderParams, KeviError,
     KeviHeader, KeyResolver, OtpAddOptions, OtpAlgorithm, OtpGetOptions, OtpHandlers,
-    OtpListOptions, OtpRemoveOptions, VaultCodec, VaultData, VaultPath, VaultResult,
-    VaultService, SALT_LEN,
+    OtpListOptions, OtpRemoveOptions, VaultCodec, VaultData, VaultPath, VaultResult, VaultService,
+    SALT_LEN,
 };
 use rand::{rng, RngCore};
 use secrecy::{ExposeSecret, SecretBox};

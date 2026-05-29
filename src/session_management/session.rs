@@ -1,6 +1,6 @@
-use crate::filesystem::secure::{atomic_write_secure, ensure_parent_secure};
 use crate::domain::VaultResult;
 use crate::error::KeviError;
+use crate::filesystem::secure::{atomic_write_secure, ensure_parent_secure};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -35,7 +35,8 @@ pub fn load<T: DeserializeOwned>(path: &Path) -> VaultResult<Option<T>> {
     if !path.exists() {
         return Ok(None);
     }
-    let bytes = fs::read(path).map_err(|e| KeviError::io(format!("Failed to read session file: {e}")))?;
+    let bytes =
+        fs::read(path).map_err(|e| KeviError::io(format!("Failed to read session file: {e}")))?;
     let content = String::from_utf8_lossy(&bytes);
 
     let envelope: SessionEnvelope<T> = match ron::from_str(&content) {

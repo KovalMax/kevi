@@ -1,4 +1,6 @@
-use kevi::api::{dk_session_file_for, load, save_derived_key_session, DerivedKey, DerivedKeyStored};
+use kevi::api::{
+    dk_session_file_for, load, save_derived_key_session, DerivedKey, DerivedKeyStored,
+};
 use secrecy::SecretBox;
 use std::time::Duration;
 use tempfile::tempdir;

@@ -20,8 +20,7 @@ pub struct VaultService<
     StoreType = Arc<dyn ByteStore>,
     CodecType = Arc<dyn VaultCodec>,
     ResolverType = Arc<dyn KeyResolver>,
->
-where
+> where
     StoreType: ByteStore,
     CodecType: VaultCodec,
     ResolverType: KeyResolver,
@@ -39,9 +38,8 @@ where
 {
     fn domain_service<'service>(
         &'service self,
-    ) -> VaultDomainService<
-        LoadedVaultRepository<'service, StoreType, CodecType, ResolverType>,
-    > {
+    ) -> VaultDomainService<LoadedVaultRepository<'service, StoreType, CodecType, ResolverType>>
+    {
         VaultDomainService::new(LoadedVaultRepository { service: self })
     }
 
@@ -59,13 +57,11 @@ where
             return Ok(VaultData::default());
         }
         if !bytes.starts_with(b"KEVI") {
-            return Err(
-                VaultError::Message(
-                    "unsupported vault format: missing KEVI header (plaintext is not allowed)"
-                        .to_string(),
-                )
-                .into(),
-            );
+            return Err(VaultError::Message(
+                "unsupported vault format: missing KEVI header (plaintext is not allowed)"
+                    .to_string(),
+            )
+            .into());
         }
         let (hdr, _off) = parse_kevi_header(&bytes).map_err(VaultError::from)?;
         let dk = self.key_resolver.resolve_for_header(&hdr)?;

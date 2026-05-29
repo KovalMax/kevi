@@ -14,9 +14,7 @@ use crate::error::KeviError;
 use crate::filesystem::clipboard::{
     copy_with_ttl_using_system_clipboard, environment_warning, ttl_seconds, ClipboardCopyError,
 };
-use crate::session_management::resolver::{
-    dk_session_file_for, save_derived_key_session,
-};
+use crate::session_management::resolver::{dk_session_file_for, save_derived_key_session};
 use crate::session_management::session::clear;
 use crate::vault::models::{AddOptions, VaultData, VaultEntry};
 use crate::vault::persistence::save_vault_file;

@@ -169,8 +169,8 @@ pub fn encrypt_vault(data: &[u8], password: &str) -> VaultResult<Vec<u8>> {
 
 pub fn decrypt_vault(data: &[u8], password: &str) -> VaultResult<Vec<u8>> {
     // Parse header then delegate to key-based decrypt
-    let (hdr, _ct_offset) = parse_kevi_header(data)
-        .map_err(|e| KeviError::crypto(format!("invalid header: {e}")))?;
+    let (hdr, _ct_offset) =
+        parse_kevi_header(data).map_err(|e| KeviError::crypto(format!("invalid header: {e}")))?;
     let key = derive_key_argon2id(password, &hdr.salt, hdr.m_cost_kib, hdr.t_cost, hdr.p_lanes)?;
     decrypt_vault_with_key(data, &key)
 }
@@ -207,8 +207,8 @@ pub fn encrypt_vault_with_key(
 
 /// Decrypt with a provided derived key. Uses header as AAD and verifies.
 pub fn decrypt_vault_with_key(data: &[u8], derived_key: &[u8; KEY_LEN]) -> VaultResult<Vec<u8>> {
-    let (_hdr, ct_offset) = parse_kevi_header(data)
-        .map_err(|e| KeviError::crypto(format!("invalid header: {e}")))?;
+    let (_hdr, ct_offset) =
+        parse_kevi_header(data).map_err(|e| KeviError::crypto(format!("invalid header: {e}")))?;
     let ciphertext = &data[ct_offset..];
     let unbound = aead::UnboundKey::new(&aead::AES_256_GCM, derived_key)
         .map_err(|_| KeviError::crypto("failed to create opening key"))?;

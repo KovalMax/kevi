@@ -126,7 +126,8 @@ where
                     if should_quit(k.code, app) {
                         return Ok(());
                     }
-                    app.handle_key_event(k.code, ttl_secs, service.clone()).await?;
+                    app.handle_key_event(k.code, ttl_secs, service.clone())
+                        .await?;
                 }
             }
         }

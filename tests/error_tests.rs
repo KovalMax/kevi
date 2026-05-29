@@ -6,7 +6,10 @@ use serde::ser::Error;
 fn kevi_error_constructor_messages() {
     let cfg = KeviError::config("missing vault");
     assert!(matches!(cfg, KeviError::Config(_)));
-    assert_eq!(cfg.to_string(), "profile \"missing vault\" is missing a vault_path");
+    assert_eq!(
+        cfg.to_string(),
+        "profile \"missing vault\" is missing a vault_path"
+    );
 
     let vault = KeviError::vault("io failure");
     assert!(matches!(vault, KeviError::Vault(_)));
@@ -53,10 +56,7 @@ fn kevi_error_from_error_uses_display() {
 
     let err2 = ConfigError::InvalidProfile("home".to_string());
     let ke2: KeviError = err2.into();
-    assert_eq!(
-        ke2.to_string(),
-        "profile \"home\" is missing a vault_path"
-    );
+    assert_eq!(ke2.to_string(), "profile \"home\" is missing a vault_path");
 
     let head_err = HeaderError::TooShort;
     let to_ke: KeviError = head_err.into();

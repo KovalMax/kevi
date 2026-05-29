@@ -1,6 +1,6 @@
+use crate::error::{OtpError, OtpResult};
 use crate::otp::handlers::OtpAddOptions;
 use crate::otp::models::{OtpAlgorithm, OtpEntry};
-use crate::error::{OtpError, OtpResult};
 use totp_rs::Secret;
 
 /// Build a TOTP generator from an OtpEntry. Base32 secret is expected to be valid.

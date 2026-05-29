@@ -5,9 +5,9 @@ use kevi::api::{
 };
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use secrecy::SecretString;
 use std::env;
 use std::sync::Arc;
-use secrecy::SecretString;
 use tempfile::tempdir;
 
 fn entry(label: &str, pw: Option<&str>) -> VaultEntry {

@@ -28,9 +28,9 @@ pub mod api {
         estimate_bits_char_mode, estimate_bits_passphrase, strength_label, DefaultPasswordGenerator,
     };
     pub use crate::cryptography::primitives::{
-        decrypt_vault, derive_key_argon2id, encrypt_vault, header_fingerprint_excluding_nonce,
-        default_params, HeaderError, KeviHeader, AEAD_AES256GCM, HEADER_VERSION, KDF_ARGON2ID,
-        NONCE_LEN, SALT_LEN,
+        decrypt_vault, default_params, derive_key_argon2id, encrypt_vault,
+        header_fingerprint_excluding_nonce, HeaderError, KeviHeader, AEAD_AES256GCM,
+        HEADER_VERSION, KDF_ARGON2ID, NONCE_LEN, SALT_LEN,
     };
 
     pub use crate::filesystem::clipboard::{copy_with_ttl, ClipboardEngine};
@@ -54,8 +54,8 @@ pub mod api {
     pub use crate::otp::parser::parse_otp_entry;
     pub use crate::otp::totp::{build_totp, validate_totp_params};
 
-    pub use crate::vault::handlers::{GetField, Vault};
     pub use crate::vault::codec::RonCodec;
+    pub use crate::vault::handlers::{GetField, Vault};
     pub use crate::vault::models::{AddOptions, VaultData, VaultEntry};
     pub use crate::vault::persistence::{load_vault_file, save_vault_file};
     pub use crate::vault::ports::{

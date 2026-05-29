@@ -1,7 +1,7 @@
 //! Top-level user-facing error types.
 
-use std::io;
 use inquire::InquireError;
+use std::io;
 use std::string::FromUtf8Error;
 use thiserror::Error;
 use tokio::task::JoinError;

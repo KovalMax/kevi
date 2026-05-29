@@ -103,7 +103,11 @@ impl KeyResolver for CachedKeyResolver {
         Ok(DerivedKey { key: key_vec })
     }
 
-    fn resolve_for_new_vault(&self, params: HeaderParams, salt: [u8; 16]) -> VaultResult<DerivedKey> {
+    fn resolve_for_new_vault(
+        &self,
+        params: HeaderParams,
+        salt: [u8; 16],
+    ) -> VaultResult<DerivedKey> {
         let pw = self.resolve_password()?;
         let key_arr =
             derive_key_argon2id(&pw, &salt, params.m_cost_kib, params.t_cost, params.p_lanes)?;
@@ -165,7 +169,11 @@ impl KeyResolver for BypassKeyResolver {
         })
     }
 
-    fn resolve_for_new_vault(&self, params: HeaderParams, salt: [u8; 16]) -> VaultResult<DerivedKey> {
+    fn resolve_for_new_vault(
+        &self,
+        params: HeaderParams,
+        salt: [u8; 16],
+    ) -> VaultResult<DerivedKey> {
         let pw = if let Ok(pw) = env::var("KEVI_PASSWORD") {
             pw
         } else {
