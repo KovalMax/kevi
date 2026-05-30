@@ -54,8 +54,11 @@ pub fn load<T: DeserializeOwned>(path: &Path) -> Result<Option<T>> {
 }
 
 pub fn clear(path: &Path) -> Result<()> {
-    if path.exists() {
-        let _ = fs::remove_file(path);
+    match fs::remove_file(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error).context("failed to clear session file"),
     }
+
     Ok(())
 }

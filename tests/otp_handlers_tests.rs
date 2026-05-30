@@ -8,7 +8,7 @@ use kevi::otp::models::OtpAlgorithm;
 use kevi::vault::models::VaultData;
 use kevi::vault::ports::{ByteStore, DerivedKey, HeaderParams, KeyResolver, VaultCodec};
 use kevi::vault::service::VaultService;
-use rand::{rng, RngCore};
+use rand::{rng, Rng};
 use secrecy::{ExposeSecret, SecretBox};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};

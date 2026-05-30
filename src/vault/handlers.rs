@@ -13,9 +13,9 @@ use crate::filesystem::clipboard::{
 };
 use crate::filesystem::store::FileByteStore;
 use crate::session_management::resolver::{
-    dk_session_file_for, save_derived_key_session, BypassKeyResolver, CachedKeyResolver,
+    clear_derived_key_cache_for_vault, dk_session_file_for, save_derived_key_session,
+    BypassKeyResolver, CachedKeyResolver,
 };
-use crate::session_management::session::clear;
 use crate::vault::codec::RonCodec;
 use crate::vault::models::{AddOptions, VaultData, VaultEntry};
 use crate::vault::persistence::save_vault_file;
@@ -513,8 +513,8 @@ impl<'a> Vault<'a> {
     }
 
     pub async fn handle_lock(&self) -> Result<()> {
-        let dk_path = dk_session_file_for(&self.config.vault_path);
-        spawn_blocking(move || clear(&dk_path))
+        let vault_path = self.config.vault_path.clone();
+        spawn_blocking(move || clear_derived_key_cache_for_vault(vault_path.as_path()))
             .await
             .map_err(|_| anyhow!("task join error"))??;
         println!("🔒 Locked (derived-key session cleared).");

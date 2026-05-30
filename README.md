@@ -181,8 +181,18 @@ Options:
 
 ### `unlock` and `lock`
 
-Kevi supports caching a derived key in a session file to avoid
-repeatedly entering your master password.
+Kevi supports caching a derived key to avoid repeatedly entering your
+master password.
+
+On macOS, Kevi stores the derived key in the system Keychain by default.
+On Linux/Windows, Kevi stores it in the system keyring/credential manager.
+If secure-store persistence is unavailable, cache is disabled by default.
+
+To explicitly allow insecure file-based fallback (not recommended), set:
+
+```bash
+export KEVI_INSECURE_CACHE_FALLBACK=1
+```
 
 ```bash
 kevi unlock [--ttl <SECONDS>]
@@ -191,10 +201,12 @@ kevi lock
 ```
 
 * `unlock` derives a key from your password, binds it to the vault
-  header via a fingerprint, and stores it in a small session file with
-  a TTL.
-* `lock` removes the session file so future operations will prompt for
-  the password again.
+  header via a fingerprint, and stores it with a TTL in secure OS
+  storage (Keychain/keyring) when available.
+* file-based fallback is used only when
+  `KEVI_INSECURE_CACHE_FALLBACK=1` is explicitly set.
+* `lock` clears both secure-store derived-key cache and legacy
+  file-session cache so future operations prompt for the password again.
 
 ## OTP / TOTP usage
 #### Kevi can store and generate TOTP (time‑based OTP) codes alongside your passwords, using totp-rs under the hood.
@@ -402,13 +414,13 @@ From the project root:
 ```bash
 cargo fmt --all
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all
+cargo test
 ```
 
 On Linux, you can also run tests with the `memlock` feature enabled:
 
 ```bash
-cargo test --all --features memlock
+cargo test --features memlock
 ```
 
 ### Code coverage
@@ -417,7 +429,7 @@ If you have `cargo-llvm-cov` installed, you can generate coverage
 locally with:
 
 ```bash
-cargo llvm-cov --workspace --no-cfg-coverage --html
+cargo llvm-cov --no-cfg-coverage --html
 ```
 
 This will create an HTML report under a `coverage-html` directory.
@@ -428,8 +440,8 @@ This repository includes a GitHub Actions workflow that runs:
 
 * `cargo fmt --all` (format check)
 * `cargo clippy --all-targets --all-features -- -D warnings`
-* `cargo build --all`
-* `cargo test --all` (with and without `memlock` on Linux)
+* `cargo build`
+* `cargo test` (with and without `memlock` on Linux)
 * `cargo audit` (via a dedicated job)
 * `cargo llvm-cov` for coverage reporting
 

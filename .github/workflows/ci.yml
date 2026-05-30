@@ -101,7 +101,7 @@ jobs:
 
       - name: Generate coverage (lcov)
         run: |
-          cargo llvm-cov --workspace --no-cfg-coverage --lcov --output-path lcov.info
+          cargo llvm-cov --no-cfg-coverage --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
