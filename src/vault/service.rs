@@ -36,10 +36,9 @@ where
     CodecType: VaultCodec,
     ResolverType: KeyResolver,
 {
-    fn domain_service<'service>(
-        &'service self,
-    ) -> VaultDomainService<LoadedVaultRepository<'service, StoreType, CodecType, ResolverType>>
-    {
+    fn domain_service(
+        &self,
+    ) -> VaultDomainService<LoadedVaultRepository<'_, StoreType, CodecType, ResolverType>> {
         VaultDomainService::new(LoadedVaultRepository { service: self })
     }
 

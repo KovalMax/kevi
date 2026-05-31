@@ -450,7 +450,7 @@ impl App {
                                         svc.add_entry(entry_real)
                                     })
                                     .await
-                                    .map_err(crate::error::TuiError::from)?;
+                                    .map_err(TuiError::from)?;
                                 } else {
                                     let _ = spawn_blocking(move || {
                                         let mut vault = svc.load()?;
@@ -471,7 +471,7 @@ impl App {
                                         }
                                     })
                                     .await
-                                    .map_err(crate::error::TuiError::from)?;
+                                    .map_err(TuiError::from)?;
                                 }
                                 // Reload entries
                                 let svc_reload = service.clone();
@@ -508,7 +508,7 @@ impl App {
                             let svc_reload = service.clone();
                             if let Ok(Ok(ents)) = spawn_blocking(move || svc_reload.load())
                                 .await
-                                .map_err(crate::error::TuiError::from)
+                                .map_err(TuiError::from)
                             {
                                 self.replace_entries(ents.entries);
                             }

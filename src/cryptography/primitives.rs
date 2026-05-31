@@ -95,7 +95,7 @@ pub enum HeaderError {
     UnsupportedAead(u8),
 }
 
-pub fn parse_kevi_header(data: &[u8]) -> std::result::Result<(KeviHeader, usize), HeaderError> {
+pub fn parse_kevi_header(data: &[u8]) -> Result<(KeviHeader, usize), HeaderError> {
     let min_len = 4 + 2 + 1 + 1 + 4 * 3 + SALT_LEN + NONCE_LEN;
     if data.len() < min_len {
         return Err(HeaderError::TooShort);

@@ -12,7 +12,8 @@ use crate::cryptography::wordlist::WORDS;
 use crate::domain::{EntryLabel, VaultResult};
 use crate::error::KeviError;
 use crate::filesystem::clipboard::{
-    copy_with_ttl_using_system_clipboard, environment_warning, ttl_seconds, ClipboardCopyError,
+    copy_with_ttl_using_system_clipboard, environment_warning, report_clipboard_copy_result,
+    ttl_seconds,
 };
 use crate::session_management::resolver::{
     clear_derived_key_cache_for_vault, dk_session_file_for, save_derived_key_session,
@@ -199,15 +200,7 @@ impl<'config> Vault<'config> {
             eprintln!("⚠️ {warn}");
         }
         let secret = SecretString::new(value.into());
-        match copy_with_ttl_using_system_clipboard(&secret, ttl) {
-            Ok(()) => {}
-            Err(ClipboardCopyError::Unavailable(error)) => {
-                eprintln!("⚠️ Clipboard not available: {error}");
-            }
-            Err(ClipboardCopyError::CopyFailed(error)) => {
-                eprintln!("⚠️ Failed to copy to clipboard: {error}");
-            }
-        }
+        report_clipboard_copy_result(copy_with_ttl_using_system_clipboard(&secret, ttl));
 
         Ok(())
     }

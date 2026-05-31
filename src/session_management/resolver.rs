@@ -36,7 +36,7 @@ pub fn dk_session_file_for<P: AsRef<Path>>(vault_path: P) -> PathBuf {
 }
 
 pub fn save_derived_key_session(
-    path: &std::path::Path,
+    path: &Path,
     fingerprint: &str,
     key: &SecretBox<Vec<u8>>,
     ttl: Duration,
@@ -48,7 +48,7 @@ pub fn save_derived_key_session(
     save(path, &stored, ttl)
 }
 
-pub fn clear_derived_key_cache_for_vault(vault_path: &std::path::Path) -> VaultResult<()> {
+pub fn clear_derived_key_cache_for_vault(vault_path: &Path) -> VaultResult<()> {
     let (store, _) = session_store_for_vault(vault_path);
     store.clear_cached()?;
 
