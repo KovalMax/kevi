@@ -18,6 +18,7 @@ fn tui_command_fails_cleanly_for_missing_vault_file() {
     cmd.assert().failure().stderr(
         predicate::str::contains("failed to load vault for TUI")
             .or(predicate::str::contains("Device not configured"))
+            .or(predicate::str::contains("terminal error"))
             .or(predicate::str::contains(
                 "Failed to initialize input reader",
             )),

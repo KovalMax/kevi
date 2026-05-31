@@ -1,3 +1,4 @@
+#[cfg(target_family = "unix")]
 use assert_cmd::cargo::CommandCargoExt;
 use assert_cmd::Command;
 use kevi::api::{save_vault_file, VaultData};
