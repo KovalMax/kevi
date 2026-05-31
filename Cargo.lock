@@ -2222,6 +2222,7 @@ dependencies = [
  "inquire",
  "kevi-core",
  "keyring",
+ "keyring-core",
  "libc",
  "predicates",
  "rand 0.10.1",

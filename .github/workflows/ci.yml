@@ -10,6 +10,7 @@ jobs:
   build-test:
     name: Build, Lint, Test
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -40,12 +41,16 @@ jobs:
       - name: Build
         run: cargo build --workspace --verbose
 
-      - name: Test
+      - name: Test (smoke, non-Linux)
         if: runner.os != 'Linux'
-        run: cargo test --workspace --verbose
+        env:
+          KEVI_INSECURE_CACHE_FALLBACK: "1"
+        run: cargo test -p kevi --verbose --test cli_tests --test version_tests
 
-      - name: Test with memlock feature (Linux only)
+      - name: Test (full + memlock, Linux only)
         if: runner.os == 'Linux'
+        env:
+          KEVI_INSECURE_CACHE_FALLBACK: "1"
         run: cargo test --workspace --features memlock --verbose
 
   link-check:

@@ -3,7 +3,7 @@ use crate::session_management::resolver::{DerivedKeySessionStore, DerivedKeyStor
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use crate::{domain::VaultResult, error::KeviError};
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-use keyring::Entry;
+use keyring_core::Entry;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use sha2::{Digest, Sha256};
 #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -42,7 +42,6 @@ impl DerivedKeySessionStore for LinuxWindowsKeyringSessionStore {
         let entry = self.entry()?;
         match entry.get_password() {
             Ok(value) => Ok(serde_json::from_str::<DerivedKeyStored>(&value).ok()),
-            Err(keyring::Error::NoEntry) => Ok(None),
             Err(_) => Ok(None),
         }
     }

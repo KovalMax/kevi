@@ -221,7 +221,7 @@ kevi otp get github --json
 ```bash
 cargo fmt --all
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace
+KEVI_INSECURE_CACHE_FALLBACK=1 cargo test --workspace
 ```
 
 On Linux, you can also run tests with the `memlock` feature enabled:
@@ -247,7 +247,7 @@ This repository includes a GitHub Actions workflow that runs:
 * `cargo fmt --all` (format check)
 * `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 * `cargo build --workspace`
-* `cargo test --workspace` (with and without `memlock` on Linux)
+* `KEVI_INSECURE_CACHE_FALLBACK=1 cargo test --workspace` (with and without `memlock` on Linux)
 * `cargo audit` (via a dedicated job)
 * `cargo llvm-cov` for coverage reporting
 
@@ -257,6 +257,6 @@ You can mirror these steps locally before pushing changes.
 
 Contributions, bug reports, and feature ideas are welcome. When submitting a pull request:
 
-* Run checks in this order: `cargo test --workspace` first, then `cargo fmt --all`, then `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
+* Run checks in this order: `KEVI_INSECURE_CACHE_FALLBACK=1 cargo test --workspace` first, then `cargo fmt --all`, then `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
 * Try to include tests for new functionality where practical.
 * Avoid logging or printing secrets; prefer redacted debug output.

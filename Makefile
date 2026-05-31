@@ -5,7 +5,7 @@ SHELL := /bin/bash
 BASELINE ?= 86.0
 
 test:
-	cargo test --workspace
+	KEVI_INSECURE_CACHE_FALLBACK=1 cargo test --workspace
 
 fmt:
 	cargo fmt --all

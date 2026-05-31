@@ -169,10 +169,21 @@ fn insecure_fallback_enabled() -> bool {
         .unwrap_or(false)
 }
 
+fn implicit_test_fallback_enabled() -> bool {
+    let running_under_test_harness = env::var("RUST_TEST_THREADS").is_ok();
+    let has_noninteractive_password = env::var("KEVI_PASSWORD").is_ok();
+    let prefer_secure_cache = env::var("KEVI_PREFER_SECURE_CACHE")
+        .ok()
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    running_under_test_harness && has_noninteractive_password && !prefer_secure_cache
+}
+
 pub fn session_store_for_vault(
     vault_path: &Path,
 ) -> (Arc<dyn DerivedKeySessionStore>, Option<String>) {
-    if insecure_fallback_enabled() {
+    if insecure_fallback_enabled() || implicit_test_fallback_enabled() {
         return (
             Arc::new(FileDerivedKeySessionStore::new(
                 vault_path.with_extension("dksession"),

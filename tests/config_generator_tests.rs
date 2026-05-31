@@ -42,6 +42,7 @@ fn generator_uses_config_length_when_not_overridden() {
             "KEVI_CONFIG_DIR",
             td.path().join("cfg").to_string_lossy().to_string(),
         )
+        .env("KEVI_INSECURE_CACHE_FALLBACK", "1")
         .env("KEVI_GEN_LENGTH", "33")
         .arg("add")
         .arg("--path")
@@ -86,6 +87,7 @@ fn passphrase_uses_config_words_and_sep_when_not_overridden() {
             "KEVI_CONFIG_DIR",
             td.path().join("cfg").to_string_lossy().to_string(),
         )
+        .env("KEVI_INSECURE_CACHE_FALLBACK", "1")
         .arg("add")
         .arg("--path")
         .arg(path.to_string_lossy().to_string())
