@@ -1,17 +1,19 @@
+use crate::error::{OtpError, OtpResult};
 use crate::otp::handlers::OtpAddOptions;
 use crate::otp::models::OtpEntry;
 use totp_rs::TOTP;
 
 /// Parse an otp-auth://totp URI and produce an OtpEntry scaffold.
 /// Note: secret is kept in base32 form; caller should validate further if needed.
-pub fn parse_otp_entry(opts: &OtpAddOptions) -> anyhow::Result<OtpEntry> {
+pub fn parse_otp_entry(opts: &OtpAddOptions) -> OtpResult<OtpEntry> {
     let secret_string = if let Some(uri) = opts.from_uri.as_ref() {
-        let parsed = TOTP::from_url_unchecked(uri)?;
+        let parsed =
+            TOTP::from_url_unchecked(uri).map_err(|e| OtpError::InvalidUri(e.to_string()))?;
         parsed.get_secret_base32()
     } else {
         let secret = opts.secret.clone().unwrap_or_default();
         if secret.trim().is_empty() {
-            anyhow::bail!("secret cannot be empty");
+            return Err(OtpError::EmptySecret);
         }
         secret
     };

@@ -1,6 +1,5 @@
 use assert_cmd::prelude::*;
-use kevi::vault::models::{VaultData, VaultEntry};
-use kevi::vault::persistence::save_vault_file;
+use kevi::api::{save_vault_file, VaultData, VaultEntry};
 use predicates::prelude::*;
 use secrecy::SecretString;
 use std::fs;
@@ -49,7 +48,7 @@ fn header_bad_magic_fails() {
 
     run_header(&path).failure().stderr(
         predicate::str::contains("Failed to parse header")
-            .or(predicate::str::contains("invalid header")),
+            .or(predicate::str::contains("ciphertext too short for header")),
     );
 }
 

@@ -1,10 +1,8 @@
 use assert_cmd::Command;
+use kevi::api::{save_vault_file, VaultData, VaultEntry};
 use predicates::prelude::*;
 use secrecy::SecretString;
 use tempfile::tempdir;
-
-use kevi::vault::models::{VaultData, VaultEntry};
-use kevi::vault::persistence::save_vault_file;
 
 fn seed_empty_vault(path: &std::path::Path) {
     save_vault_file(&VaultData::default(), path, "pw").expect("seed empty vault");

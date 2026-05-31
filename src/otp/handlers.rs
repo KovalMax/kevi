@@ -1,30 +1,30 @@
+use crate::app::wiring::create_vault_service_bypass_cache;
 use crate::config::app_config::Config;
+use crate::domain::OtpName;
+use crate::error::{OtpError, OtpResult};
 use crate::filesystem::clipboard::{
-    copy_with_ttl, environment_warning, ttl_seconds, ClipboardEngine, SystemClipboardEngine,
+    copy_with_ttl_using_system_clipboard, environment_warning, ttl_seconds, ClipboardCopyError,
 };
-use crate::filesystem::store::FileByteStore;
 use crate::otp::models::OtpAlgorithm;
 use crate::otp::parser::parse_otp_entry;
 use crate::otp::totp::{build_totp, validate_totp_params};
-use crate::session_management::resolver::BypassKeyResolver;
-use crate::vault::codec::RonCodec;
-use crate::vault::ports::{ByteStore, KeyResolver, VaultCodec};
+use crate::vault::models::VaultData;
 use crate::vault::service::VaultService;
-use anyhow::{anyhow, Result};
 use inquire::Confirm;
+use kevi_core::otp::service::{OtpDomainService, OtpUpsertError, OtpVaultRepository};
 use serde_json::json;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::task::spawn_blocking;
 
-pub struct OtpHandlers<'a> {
-    config: &'a Config,
+pub struct OtpHandlers<'config> {
+    config: &'config Config,
     service: Arc<VaultService>,
 }
 
 #[derive(Debug, Clone)]
 pub struct OtpAddOptions {
-    pub name: String,
+    pub name: OtpName,
     pub secret: Option<String>,
     pub from_uri: Option<String>,
     pub issuer: Option<String>,
@@ -38,7 +38,7 @@ pub struct OtpAddOptions {
 
 #[derive(Debug, Clone)]
 pub struct OtpGetOptions {
-    pub name: String,
+    pub name: OtpName,
     pub no_copy: bool,
     pub echo: bool,
     pub at: Option<u64>,
@@ -54,82 +54,87 @@ pub struct OtpListOptions {
 
 #[derive(Debug, Clone)]
 pub struct OtpRemoveOptions {
-    pub name: String,
+    pub name: OtpName,
     pub yes: bool,
 }
 
-impl<'a> OtpHandlers<'a> {
-    pub fn create(config: &'a Config, service: Arc<VaultService>) -> Self {
+impl<'config> OtpHandlers<'config> {
+    pub fn create(config: &'config Config, service: Arc<VaultService>) -> Self {
         Self { config, service }
     }
 
     fn service_once(&self) -> Arc<VaultService> {
-        let store: Arc<dyn ByteStore> =
-            Arc::new(FileByteStore::new(self.config.vault_path.clone()));
-        let codec: Arc<dyn VaultCodec> = Arc::new(RonCodec);
-        let resolver: Arc<dyn KeyResolver> = Arc::new(BypassKeyResolver::new());
-        Arc::new(VaultService::new(store, codec, resolver))
+        create_vault_service_bypass_cache(self.config)
+    }
+
+    fn read_service(&self, once: bool) -> Arc<VaultService> {
+        if once {
+            self.service_once()
+        } else {
+            self.service.clone()
+        }
+    }
+
+    async fn load_vault(service: Arc<VaultService>) -> OtpResult<VaultData> {
+        spawn_blocking(move || service.load())
+            .await
+            .map_err(|error| OtpError::Message(error.to_string()))?
+            .map_err(|error| OtpError::Message(error.to_string()))
+    }
+
+    fn find_otp_entry<'vault_data>(
+        vault_data: &'vault_data VaultData,
+        name: &OtpName,
+    ) -> Option<&'vault_data crate::otp::models::OtpEntry> {
+        vault_data.otps.iter().find(|entry| &entry.name == name)
+    }
+
+    fn has_otp_entry(vault_data: &VaultData, name: &OtpName) -> bool {
+        vault_data.otps.iter().any(|entry| &entry.name == name)
+    }
+
+    fn print_otp_entry_not_found(name: &OtpName) {
+        println!("❌ {}", OtpError::EntryNotFound(name.to_string()));
     }
 
     /// Add or update a TOTP entry
-    pub async fn handle_add(&self, opts: &OtpAddOptions) -> Result<()> {
+    pub async fn handle_add(&self, opts: &OtpAddOptions) -> OtpResult<()> {
         validate_totp_params(opts)?;
-
-        // Load vault
-        let svc_load = self.service.clone();
-        let mut vault = spawn_blocking(move || svc_load.load())
-            .await?
-            .map_err(|_| anyhow!("task join error"))?;
 
         // Determine base entry from uri or manual args
         let entry = parse_otp_entry(opts)?;
         // Validate by constructing a TOTP
         build_totp(&entry)?;
 
-        let exists = vault.otps.iter().position(|o| o.name == entry.name);
-        match exists {
-            Some(idx) if opts.on_duplicate_override => {
-                vault.otps[idx] = entry;
+        let domain_service = OtpDomainService::new(VaultServiceOtpRepository {
+            service: self.service.as_ref(),
+        });
+        match domain_service.upsert_entry(entry, opts.on_duplicate_override) {
+            Ok(()) => {}
+            Err(OtpUpsertError::DuplicateEntry(duplicate_name)) => {
+                return Err(OtpError::DuplicateEntry(duplicate_name));
             }
-            Some(_) => {
-                anyhow::bail!(
-                    "otp entry \"{}\" already exists; use --on-duplicate-override to replace",
-                    opts.name
-                );
+            Err(OtpUpsertError::Repository(error)) => {
+                return Err(OtpError::Message(error.to_string()));
             }
-            None => vault.otps.push(entry),
         }
-
-        let svc_save = self.service.clone();
-        spawn_blocking(move || svc_save.save(&vault))
-            .await
-            .map_err(|_| anyhow!("task join error"))??;
 
         println!("✅ OTP entry saved.");
         Ok(())
     }
 
     /// Generate a TOTP code and copy/print it
-    pub async fn handle_get(&self, opts: OtpGetOptions) -> Result<()> {
+    pub async fn handle_get(&self, opts: OtpGetOptions) -> OtpResult<()> {
         if !opts.echo && opts.no_copy && !opts.json {
-            anyhow::bail!("nothing to do: use --echo or remove --no-copy");
+            return Err(OtpError::NothingToDo);
         }
 
-        // Load vault (optionally bypass cache)
-        let svc = if opts.once {
-            self.service_once()
-        } else {
-            self.service.clone()
-        };
+        let vault = Self::load_vault(self.read_service(opts.once)).await?;
 
-        let vault = spawn_blocking(move || svc.load())
-            .await?
-            .map_err(|_| anyhow!("task join error"))?;
-
-        let entry = match vault.otps.iter().find(|o| o.name == opts.name) {
+        let entry = match Self::find_otp_entry(&vault, &opts.name) {
             Some(e) => e,
             None => {
-                println!("❌ No OTP entry found with name '{}'.", opts.name);
+                Self::print_otp_entry_not_found(&opts.name);
                 return Ok(());
             }
         };
@@ -170,30 +175,28 @@ impl<'a> OtpHandlers<'a> {
         if let Some(warn) = environment_warning() {
             eprintln!("⚠️ {warn}");
         }
-        match SystemClipboardEngine::new() {
-            Ok(engine_impl) => {
-                let engine = Arc::new(engine_impl) as Arc<dyn ClipboardEngine>;
-                let secret = secrecy::SecretString::new(code.clone().into());
-                if let Err(e) = copy_with_ttl(engine, &secret, ttl) {
-                    eprintln!("⚠️ Failed to copy to clipboard: {e}");
-                }
+        let secret = secrecy::SecretString::new(code.clone().into());
+        match copy_with_ttl_using_system_clipboard(&secret, ttl) {
+            Ok(()) => {}
+            Err(ClipboardCopyError::Unavailable(error)) => {
+                eprintln!("⚠️ Clipboard not available: {error}");
             }
-            Err(e) => eprintln!("⚠️ Clipboard not available: {e}"),
+            Err(ClipboardCopyError::CopyFailed(error)) => {
+                eprintln!("⚠️ Failed to copy to clipboard: {error}");
+            }
         }
 
         Ok(())
     }
 
     /// List OTP entries
-    pub async fn handle_list(&self, opts: OtpListOptions) -> Result<()> {
-        let svc = self.service.clone();
-        let mut data = spawn_blocking(move || svc.load())
-            .await
-            .map_err(|_| anyhow!("task join error"))??;
+    pub async fn handle_list(&self, opts: OtpListOptions) -> OtpResult<()> {
+        let mut data = Self::load_vault(self.service.clone()).await?;
 
         if let Some(q) = opts.query.as_ref() {
             let ql = q.to_lowercase();
-            data.otps.retain(|o| o.name.to_lowercase().contains(&ql));
+            data.otps
+                .retain(|o| o.name.as_str().to_lowercase().contains(&ql));
         }
 
         if opts.json {
@@ -243,14 +246,11 @@ impl<'a> OtpHandlers<'a> {
     }
 
     /// Remove an OTP entry
-    pub async fn handle_remove(&self, opts: OtpRemoveOptions) -> Result<()> {
-        let svc_load = self.service.clone();
-        let data = spawn_blocking(move || svc_load.load())
-            .await
-            .map_err(|_| anyhow!("task join error"))??;
+    pub async fn handle_remove(&self, opts: OtpRemoveOptions) -> OtpResult<()> {
+        let data = Self::load_vault(self.service.clone()).await?;
 
-        if !data.otps.iter().any(|o| o.name == opts.name) {
-            println!("❌ No OTP entry found with name '{}'.", opts.name);
+        if !Self::has_otp_entry(&data, &opts.name) {
+            Self::print_otp_entry_not_found(&opts.name);
             return Ok(());
         }
 
@@ -264,26 +264,39 @@ impl<'a> OtpHandlers<'a> {
         }
 
         let svc_rm = self.service.clone();
-        let name_owned = opts.name.clone();
+        let name_owned = opts.name.to_string();
         let removed = spawn_blocking(move || {
-            let mut vault = svc_rm.load()?;
-            let before = vault.otps.len();
-            vault.otps.retain(|o| o.name != name_owned);
-            let changed = vault.otps.len() != before;
-            if changed {
-                svc_rm.save(&vault)?;
-            }
-            Ok::<bool, anyhow::Error>(changed)
+            let domain_service = OtpDomainService::new(VaultServiceOtpRepository {
+                service: svc_rm.as_ref(),
+            });
+            domain_service.remove_entry(&name_owned)
         })
         .await
-        .map_err(|_| anyhow!("task join error"))??;
+        .map_err(|e| OtpError::Message(e.to_string()))?
+        .map_err(|e| OtpError::Message(e.to_string()))?;
 
         if removed {
             println!("🗑️ OTP entry '{}' removed.", opts.name);
         } else {
-            println!("❌ No OTP entry found with name '{}'.", opts.name);
+            Self::print_otp_entry_not_found(&opts.name);
         }
 
         Ok(())
+    }
+}
+
+struct VaultServiceOtpRepository<'service> {
+    service: &'service VaultService,
+}
+
+impl<'service> OtpVaultRepository for VaultServiceOtpRepository<'service> {
+    type Error = crate::error::KeviError;
+
+    fn load(&self) -> crate::domain::VaultResult<VaultData> {
+        self.service.load()
+    }
+
+    fn save(&self, data: &VaultData) -> crate::domain::VaultResult<()> {
+        self.service.save(data)
     }
 }

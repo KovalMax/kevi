@@ -4,11 +4,15 @@ version = "0.4.0"
 edition = "2021"
 build = "build.rs"
 
+[workspace]
+members = [".", "crates/kevi-core"]
+
 [features]
 # Optional best-effort memory locking for derived keys on Unix.
 memlock = ["dep:libc"]
 
 [dependencies]
+kevi-core = { path = "crates/kevi-core" }
 # 🔐 Crypto
 ring = "0.17.8"
 argon2 = { version = "0.5", default-features = true }

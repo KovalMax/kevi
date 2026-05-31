@@ -1,7 +1,7 @@
-use kevi::cryptography::primitives::{default_params, derive_key_argon2id, KeviHeader, SALT_LEN};
-use kevi::vault::models::VaultData;
-use kevi::vault::ports::{ByteStore, DerivedKey, HeaderParams, KeyResolver, VaultCodec};
-use kevi::vault::service::VaultService;
+use kevi::api::{
+    default_params, derive_key_argon2id, ByteStore, DerivedKey, HeaderParams, KeviHeader,
+    KeyResolver, VaultCodec, VaultData, VaultResult, VaultService, SALT_LEN,
+};
 use secrecy::{ExposeSecret, SecretBox};
 use std::sync::{Arc, Mutex};
 
@@ -19,11 +19,11 @@ impl MemoryStore {
 }
 
 impl ByteStore for MemoryStore {
-    fn read(&self) -> anyhow::Result<Vec<u8>> {
+    fn read(&self) -> VaultResult<Vec<u8>> {
         Ok(self.bytes.lock().expect("lock").clone())
     }
 
-    fn write(&self, bytes: &[u8]) -> anyhow::Result<()> {
+    fn write(&self, bytes: &[u8]) -> VaultResult<()> {
         *self.bytes.lock().expect("lock") = bytes.to_vec();
         Ok(())
     }
@@ -33,15 +33,19 @@ impl ByteStore for MemoryStore {
 struct TestCodec;
 
 impl VaultCodec for TestCodec {
-    fn encode(&self, data: &VaultData) -> anyhow::Result<Vec<u8>> {
-        Ok(ron::to_string(data)?.into_bytes())
+    fn encode(&self, data: &VaultData) -> VaultResult<Vec<u8>> {
+        ron::to_string(data)
+            .map(|s| s.into_bytes())
+            .map_err(|error| kevi::api::KeviError::vault(error.to_string()))
     }
 
-    fn decode(&self, data: &[u8]) -> anyhow::Result<VaultData> {
+    fn decode(&self, data: &[u8]) -> VaultResult<VaultData> {
         if data.is_empty() {
             return Ok(VaultData::default());
         }
-        Ok(ron::from_str(std::str::from_utf8(data)?)?)
+        let content = std::str::from_utf8(data)
+            .map_err(|error| kevi::api::KeviError::vault(error.to_string()))?;
+        ron::from_str(content).map_err(|error| kevi::api::KeviError::vault(error.to_string()))
     }
 }
 
@@ -63,7 +67,7 @@ impl FixedResolver {
 }
 
 impl KeyResolver for FixedResolver {
-    fn resolve_for_header(&self, _hdr: &KeviHeader) -> anyhow::Result<DerivedKey> {
+    fn resolve_for_header(&self, _hdr: &KeviHeader) -> VaultResult<DerivedKey> {
         Ok(DerivedKey {
             key: SecretBox::new(Box::new(self.key.expose_secret().clone())),
         })
@@ -73,7 +77,7 @@ impl KeyResolver for FixedResolver {
         &self,
         _params: HeaderParams,
         _salt: [u8; 16],
-    ) -> anyhow::Result<DerivedKey> {
+    ) -> VaultResult<DerivedKey> {
         Ok(DerivedKey {
             key: SecretBox::new(Box::new(self.key.expose_secret().clone())),
         })

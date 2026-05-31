@@ -1,5 +1,5 @@
 use anyhow::Result;
-use kevi::cryptography::primitives::{decrypt_vault, encrypt_vault};
+use kevi::api::{decrypt_vault, encrypt_vault};
 
 #[test]
 fn test_wrong_password_fails() {

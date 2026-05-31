@@ -1,6 +1,4 @@
-use kevi::otp::handlers::OtpAddOptions;
-use kevi::otp::models::{OtpAlgorithm, OtpEntry};
-use kevi::otp::totp::{build_totp, validate_totp_params};
+use kevi::api::{build_totp, validate_totp_params, OtpAddOptions, OtpAlgorithm, OtpEntry};
 
 fn make_otp_options(
     digits: u32,
@@ -9,7 +7,7 @@ fn make_otp_options(
     from_uri: Option<String>,
 ) -> OtpAddOptions {
     OtpAddOptions {
-        name: String::new(),
+        name: "".into(),
         secret,
         from_uri,
         issuer: None,
@@ -87,7 +85,7 @@ fn validate_totp_params_secret_or_from_uri() {
 #[test]
 fn build_totp_generates_6_digits() {
     let entry = OtpEntry {
-        name: "test".to_string(),
+        name: "test".into(),
         secret: "JBSWY3DPEHPK3PXP".to_string(),
         issuer: Some("Example".to_string()),
         username: "demo@example.com".to_string(),

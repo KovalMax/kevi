@@ -2220,6 +2220,7 @@ dependencies = [
  "gag",
  "hex",
  "inquire",
+ "kevi-core",
  "keyring",
  "libc",
  "predicates",
@@ -2239,6 +2240,15 @@ dependencies = [
  "toml",
  "totp-rs",
  "zeroize",
+]
+
+[[package]]
+name = "kevi-core"
+version = "0.1.0"
+dependencies = [
+ "secrecy",
+ "serde",
+ "totp-rs",
 ]
 
 [[package]]

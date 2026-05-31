@@ -1,10 +1,8 @@
-use kevi::otp::handlers::OtpAddOptions;
-use kevi::otp::models::OtpAlgorithm;
-use kevi::otp::parser::parse_otp_entry;
+use kevi::api::{parse_otp_entry, OtpAddOptions, OtpAlgorithm};
 
 fn make_otp_entry(uri: Option<String>, secret: Option<String>) -> OtpAddOptions {
     OtpAddOptions {
-        name: "demo".to_string(),
+        name: "demo".into(),
         secret,
         from_uri: uri,
         issuer: Some("demo".to_string()),

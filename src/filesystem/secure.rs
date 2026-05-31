@@ -1,4 +1,5 @@
-use anyhow::{Context, Result};
+use crate::domain::VaultResult;
+use crate::error::KeviError;
 use std::fs::{self, File};
 use std::io::Write;
 #[cfg(target_family = "unix")]
@@ -6,9 +7,10 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 /// Ensure the parent directory of `path` exists and has restrictive permissions on Unix.
-pub fn ensure_parent_secure(path: &Path) -> Result<()> {
+pub fn ensure_parent_secure(path: &Path) -> VaultResult<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).context("Failed to create vault directory")?;
+        fs::create_dir_all(parent)
+            .map_err(|e| KeviError::io(format!("Failed to create vault directory: {e}")))?;
         #[cfg(target_family = "unix")]
         {
             let perm = fs::Permissions::from_mode(0o700);
@@ -19,11 +21,13 @@ pub fn ensure_parent_secure(path: &Path) -> Result<()> {
 }
 
 /// Atomically write `bytes` to `path` with secure permissions (0600 on Unix).
-pub fn atomic_write_secure(path: &Path, bytes: &[u8]) -> Result<()> {
+pub fn atomic_write_secure(path: &Path, bytes: &[u8]) -> VaultResult<()> {
     let tmp_path: PathBuf = path.with_extension("tmp");
     {
-        let mut tmp = File::create(&tmp_path).context("Failed to create temporary vault file")?;
-        tmp.write_all(bytes)?;
+        let mut tmp = File::create(&tmp_path)
+            .map_err(|e| KeviError::io(format!("Failed to create temporary vault file: {e}")))?;
+        tmp.write_all(bytes)
+            .map_err(|e| KeviError::io(format!("Failed to write temporary vault file: {e}")))?;
         let _ = tmp.sync_data();
     }
 
@@ -33,7 +37,13 @@ pub fn atomic_write_secure(path: &Path, bytes: &[u8]) -> Result<()> {
         let _ = fs::set_permissions(&tmp_path, perm);
     }
 
-    fs::rename(&tmp_path, path).context("Failed to replace vault file atomically")?;
+    fs::rename(&tmp_path, path)
+        .map_err(|e| KeviError::io(format!("Failed to replace vault file atomically: {e}")))?;
+    if let Some(parent) = path.parent() {
+        if let Ok(dir) = File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
     Ok(())
 }
 
@@ -60,7 +70,7 @@ fn backup_count_from_env() -> usize {
 
 /// Rotate backups and write atomically, keeping up to N backups.
 /// Backups are named `<file>.1`, `<file>.2`, ..., `<file>.N`.
-pub fn write_with_backups_n(path: &Path, bytes: &[u8], n: usize) -> Result<()> {
+pub fn write_with_backups_n(path: &Path, bytes: &[u8], n: usize) -> VaultResult<()> {
     ensure_parent_secure(path)?;
     if n > 0 {
         // Remove the oldest if exists
@@ -97,7 +107,7 @@ pub fn write_with_backups_n(path: &Path, bytes: &[u8], n: usize) -> Result<()> {
 }
 
 /// Deprecated: env-coupled variant kept for compatibility. Prefer `write_with_backups_n`.
-pub fn write_with_backups(path: &Path, bytes: &[u8]) -> Result<()> {
+pub fn write_with_backups(path: &Path, bytes: &[u8]) -> VaultResult<()> {
     let n = backup_count_from_env();
     write_with_backups_n(path, bytes, n)
 }

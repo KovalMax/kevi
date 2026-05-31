@@ -1,13 +1,10 @@
 use base64::Engine as _;
-use kevi::cryptography::primitives::{
-    header_fingerprint_excluding_nonce, KeviHeader, AEAD_AES256GCM, HEADER_VERSION, KDF_ARGON2ID,
+use kevi::api::{
+    clear, dk_session_file_for, header_fingerprint_excluding_nonce, load, save,
+    save_derived_key_session, session_store_for_vault, BypassKeyResolver, CachedKeyResolver,
+    DerivedKeySessionStore, DerivedKeyStored, HeaderParams, KeviHeader, KeyResolver, VaultResult,
+    AEAD_AES256GCM, HEADER_VERSION, KDF_ARGON2ID,
 };
-use kevi::session_management::resolver::{
-    dk_session_file_for, save_derived_key_session, session_store_for_vault, BypassKeyResolver,
-    CachedKeyResolver, DerivedKeySessionStore, DerivedKeyStored,
-};
-use kevi::session_management::session::{clear, load, save};
-use kevi::vault::ports::{HeaderParams, KeyResolver};
 use secrecy::{ExposeSecret, SecretBox};
 use serial_test::serial;
 use std::sync::{Arc, Mutex};
@@ -24,11 +21,11 @@ struct MemoryDerivedKeySessionStore {
 struct FailingDerivedKeySessionStore;
 
 impl DerivedKeySessionStore for MemoryDerivedKeySessionStore {
-    fn load_cached(&self) -> anyhow::Result<Option<DerivedKeyStored>> {
+    fn load_cached(&self) -> VaultResult<Option<DerivedKeyStored>> {
         Ok(self.value.lock().expect("lock").clone())
     }
 
-    fn save_cached(&self, stored: &DerivedKeyStored, _ttl: Duration) -> anyhow::Result<()> {
+    fn save_cached(&self, stored: &DerivedKeyStored, _ttl: Duration) -> VaultResult<()> {
         *self.value.lock().expect("lock") = Some(DerivedKeyStored {
             header_fingerprint_hex: stored.header_fingerprint_hex.clone(),
             key_b64: stored.key_b64.clone(),
@@ -37,22 +34,22 @@ impl DerivedKeySessionStore for MemoryDerivedKeySessionStore {
         Ok(())
     }
 
-    fn clear_cached(&self) -> anyhow::Result<()> {
+    fn clear_cached(&self) -> VaultResult<()> {
         *self.value.lock().expect("lock") = None;
         Ok(())
     }
 }
 
 impl DerivedKeySessionStore for FailingDerivedKeySessionStore {
-    fn load_cached(&self) -> anyhow::Result<Option<DerivedKeyStored>> {
-        Err(anyhow::anyhow!("load failed"))
+    fn load_cached(&self) -> VaultResult<Option<DerivedKeyStored>> {
+        Err(kevi::api::KeviError::vault("load failed"))
     }
 
-    fn save_cached(&self, _stored: &DerivedKeyStored, _ttl: Duration) -> anyhow::Result<()> {
-        Err(anyhow::anyhow!("save failed"))
+    fn save_cached(&self, _stored: &DerivedKeyStored, _ttl: Duration) -> VaultResult<()> {
+        Err(kevi::api::KeviError::vault("save failed"))
     }
 
-    fn clear_cached(&self) -> anyhow::Result<()> {
+    fn clear_cached(&self) -> VaultResult<()> {
         Ok(())
     }
 }

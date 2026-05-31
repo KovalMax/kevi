@@ -1,3 +1,8 @@
+use crate::domain::EntryLabel;
+use crate::otp::models::OtpEntry;
+use secrecy::SecretString;
+use serde::{Deserialize, Serialize};
+
 pub mod secret_string {
     use secrecy::{ExposeSecret, SecretString};
     use serde::{Deserialize, Deserializer, Serializer};
@@ -39,4 +44,20 @@ pub mod secret_string_option {
         let opt: Option<String> = Option::<String>::deserialize(deserializer)?;
         Ok(opt.map(|s| SecretString::new(s.into())))
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct VaultEntry {
+    pub label: EntryLabel,
+    #[serde(default, with = "secret_string_option")]
+    pub username: Option<SecretString>,
+    #[serde(with = "secret_string")]
+    pub password: SecretString,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct VaultData {
+    pub entries: Vec<VaultEntry>,
+    pub otps: Vec<OtpEntry>,
 }

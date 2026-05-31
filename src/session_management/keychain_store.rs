@@ -1,7 +1,7 @@
 #[cfg(target_os = "macos")]
 use crate::session_management::resolver::{DerivedKeySessionStore, DerivedKeyStored};
 #[cfg(target_os = "macos")]
-use anyhow::Result;
+use crate::{domain::VaultResult, error::KeviError};
 #[cfg(target_os = "macos")]
 use security_framework::passwords::{
     delete_generic_password, get_generic_password, set_generic_password,
@@ -15,8 +15,8 @@ use std::time::Duration;
 
 #[cfg(target_os = "macos")]
 trait KeychainClient: Send + Sync {
-    fn get_password_bytes(&self, service: &str, account: &str) -> Result<Option<Vec<u8>>>;
-    fn set_password_bytes(&self, service: &str, account: &str, value: &[u8]) -> Result<()>;
+    fn get_password_bytes(&self, service: &str, account: &str) -> VaultResult<Option<Vec<u8>>>;
+    fn set_password_bytes(&self, service: &str, account: &str, value: &[u8]) -> VaultResult<()>;
 }
 
 #[cfg(target_os = "macos")]
@@ -24,16 +24,17 @@ struct SecurityFrameworkClient;
 
 #[cfg(target_os = "macos")]
 impl KeychainClient for SecurityFrameworkClient {
-    fn get_password_bytes(&self, service: &str, account: &str) -> Result<Option<Vec<u8>>> {
+    fn get_password_bytes(&self, service: &str, account: &str) -> VaultResult<Option<Vec<u8>>> {
         match get_generic_password(service, account) {
             Ok(bytes) => Ok(Some(bytes)),
             Err(_) => Ok(None),
         }
     }
 
-    fn set_password_bytes(&self, service: &str, account: &str, value: &[u8]) -> Result<()> {
+    fn set_password_bytes(&self, service: &str, account: &str, value: &[u8]) -> VaultResult<()> {
         let _ = delete_generic_password(service, account);
-        set_generic_password(service, account, value)?;
+        set_generic_password(service, account, value)
+            .map_err(|error| KeviError::vault(error.to_string()))?;
         Ok(())
     }
 }
@@ -47,7 +48,7 @@ pub struct MacOsKeychainSessionStore {
 
 #[cfg(target_os = "macos")]
 impl MacOsKeychainSessionStore {
-    pub fn new(vault_path: &Path) -> Result<Self> {
+    pub fn new(vault_path: &Path) -> VaultResult<Self> {
         Ok(Self::new_with_client(
             vault_path,
             Box::new(SecurityFrameworkClient),
@@ -88,7 +89,7 @@ impl MacOsKeychainSessionStore {
 
 #[cfg(target_os = "macos")]
 impl DerivedKeySessionStore for MacOsKeychainSessionStore {
-    fn load_cached(&self) -> Result<Option<DerivedKeyStored>> {
+    fn load_cached(&self) -> VaultResult<Option<DerivedKeyStored>> {
         let Some(bytes) = self
             .client
             .get_password_bytes(&self.service, &self.account)?
@@ -100,14 +101,15 @@ impl DerivedKeySessionStore for MacOsKeychainSessionStore {
         Ok(stored)
     }
 
-    fn save_cached(&self, stored: &DerivedKeyStored, _ttl: Duration) -> Result<()> {
-        let payload = serde_json::to_vec(stored)?;
+    fn save_cached(&self, stored: &DerivedKeyStored, _ttl: Duration) -> VaultResult<()> {
+        let payload =
+            serde_json::to_vec(stored).map_err(|error| KeviError::vault(error.to_string()))?;
         self.client
             .set_password_bytes(&self.service, &self.account, &payload)?;
         Ok(())
     }
 
-    fn clear_cached(&self) -> Result<()> {
+    fn clear_cached(&self) -> VaultResult<()> {
         let _ = delete_generic_password(self.service.as_str(), self.account.as_str());
         Ok(())
     }
@@ -116,8 +118,8 @@ impl DerivedKeySessionStore for MacOsKeychainSessionStore {
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::{KeychainClient, MacOsKeychainSessionStore};
+    use crate::domain::VaultResult;
     use crate::session_management::resolver::{DerivedKeySessionStore, DerivedKeyStored};
-    use anyhow::Result;
     use std::collections::HashMap;
     use std::path::Path;
     use std::sync::Mutex;
@@ -129,7 +131,7 @@ mod tests {
     }
 
     impl KeychainClient for FakeKeychainClient {
-        fn get_password_bytes(&self, service: &str, account: &str) -> Result<Option<Vec<u8>>> {
+        fn get_password_bytes(&self, service: &str, account: &str) -> VaultResult<Option<Vec<u8>>> {
             Ok(self
                 .values
                 .lock()
@@ -138,7 +140,12 @@ mod tests {
                 .cloned())
         }
 
-        fn set_password_bytes(&self, service: &str, account: &str, value: &[u8]) -> Result<()> {
+        fn set_password_bytes(
+            &self,
+            service: &str,
+            account: &str,
+            value: &[u8],
+        ) -> VaultResult<()> {
             self.values
                 .lock()
                 .expect("lock")

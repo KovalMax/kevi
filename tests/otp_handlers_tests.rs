@@ -1,13 +1,10 @@
-use anyhow::Result;
-use kevi::config::app_config::Config;
-use kevi::cryptography::primitives::{default_params, derive_key_argon2id, KeviHeader, SALT_LEN};
-use kevi::otp::handlers::{
-    OtpAddOptions, OtpGetOptions, OtpHandlers, OtpListOptions, OtpRemoveOptions,
+use kevi::api::Config;
+use kevi::api::{
+    default_params, derive_key_argon2id, ByteStore, DerivedKey, HeaderParams, KeviError,
+    KeviHeader, KeyResolver, OtpAddOptions, OtpAlgorithm, OtpGetOptions, OtpHandlers,
+    OtpListOptions, OtpRemoveOptions, VaultCodec, VaultData, VaultPath, VaultResult, VaultService,
+    SALT_LEN,
 };
-use kevi::otp::models::OtpAlgorithm;
-use kevi::vault::models::VaultData;
-use kevi::vault::ports::{ByteStore, DerivedKey, HeaderParams, KeyResolver, VaultCodec};
-use kevi::vault::service::VaultService;
 use rand::{rng, Rng};
 use secrecy::{ExposeSecret, SecretBox};
 use std::path::PathBuf;
@@ -29,11 +26,11 @@ impl MemoryStore {
 }
 
 impl ByteStore for MemoryStore {
-    fn read(&self) -> Result<Vec<u8>> {
+    fn read(&self) -> VaultResult<Vec<u8>> {
         Ok(self.buf.lock().unwrap().clone())
     }
 
-    fn write(&self, bytes: &[u8]) -> Result<()> {
+    fn write(&self, bytes: &[u8]) -> VaultResult<()> {
         *self.buf.lock().unwrap() = bytes.to_vec();
         Ok(())
     }
@@ -43,17 +40,17 @@ impl ByteStore for MemoryStore {
 struct RonCodec;
 
 impl VaultCodec for RonCodec {
-    fn encode(&self, data: &VaultData) -> Result<Vec<u8>> {
-        let s = ron::to_string(data)?;
+    fn encode(&self, data: &VaultData) -> VaultResult<Vec<u8>> {
+        let s = ron::to_string(data).map_err(|e| KeviError::vault(e.to_string()))?;
         Ok(s.into_bytes())
     }
 
-    fn decode(&self, data: &[u8]) -> Result<VaultData> {
+    fn decode(&self, data: &[u8]) -> VaultResult<VaultData> {
         if data.is_empty() {
             return Ok(VaultData::default());
         }
-        let s = std::str::from_utf8(data)?;
-        Ok(ron::from_str::<VaultData>(s)?)
+        let s = std::str::from_utf8(data).map_err(|e| KeviError::vault(e.to_string()))?;
+        ron::from_str::<VaultData>(s).map_err(|e| KeviError::vault(e.to_string()))
     }
 }
 
@@ -76,13 +73,17 @@ impl FixedKeyResolver {
 }
 
 impl KeyResolver for FixedKeyResolver {
-    fn resolve_for_header(&self, _hdr: &KeviHeader) -> Result<DerivedKey> {
+    fn resolve_for_header(&self, _hdr: &KeviHeader) -> VaultResult<DerivedKey> {
         Ok(DerivedKey {
             key: SecretBox::new(Box::new(self.key.expose_secret().clone())),
         })
     }
 
-    fn resolve_for_new_vault(&self, _params: HeaderParams, _salt: [u8; 16]) -> Result<DerivedKey> {
+    fn resolve_for_new_vault(
+        &self,
+        _params: HeaderParams,
+        _salt: [u8; 16],
+    ) -> VaultResult<DerivedKey> {
         Ok(DerivedKey {
             key: SecretBox::new(Box::new(self.key.expose_secret().clone())),
         })
@@ -91,7 +92,7 @@ impl KeyResolver for FixedKeyResolver {
 
 fn test_config() -> Config {
     Config {
-        vault_path: PathBuf::from("test-vault.ron"),
+        vault_path: VaultPath::from(PathBuf::from("test-vault.ron")),
         clipboard_ttl: Some(3),
         backups: Some(0),
         generator_length: None,
@@ -278,6 +279,23 @@ async fn otp_get_rejects_no_echo_and_no_copy() {
 
     let err = h.handlers.handle_get(opts).await.unwrap_err();
     assert!(err.to_string().contains("nothing to do"));
+}
+
+#[tokio::test]
+async fn otp_get_once_non_existing_entry_is_ok() {
+    let h = make_harness();
+
+    let get_opts = OtpGetOptions {
+        name: "missing-once".into(),
+        no_copy: true,
+        echo: true,
+        at: None,
+        once: true,
+        json: false,
+    };
+
+    let result = h.handlers.handle_get(get_opts).await;
+    assert!(result.is_ok());
 }
 
 #[tokio::test]

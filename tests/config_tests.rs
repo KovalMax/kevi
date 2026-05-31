@@ -1,6 +1,4 @@
-use kevi::config::app_config::Config;
-use kevi::filesystem::store::FileByteStore;
-use kevi::vault::ports::ByteStore;
+use kevi::api::{ByteStore, Config, ConfigError, FileByteStore, VaultPath};
 use serial_test::serial;
 use std::env;
 use std::fs;
@@ -103,6 +101,67 @@ fn clipboard_ttl_and_backups_precedence() {
 
 #[test]
 #[serial]
+fn generator_defaults_precedence() {
+    let td = tempdir().unwrap();
+    env::set_var("HOME", td.path());
+    env::set_var(
+        "KEVI_CONFIG_DIR",
+        td.path().join("cfg").to_string_lossy().to_string(),
+    );
+
+    env::remove_var("KEVI_GEN_LENGTH");
+    env::remove_var("KEVI_GEN_WORDS");
+    env::remove_var("KEVI_GEN_SEP");
+    env::remove_var("KEVI_AVOID_AMBIGUOUS");
+
+    // From file when env not set
+    write_config_file(
+        td.path(),
+        r#"
+generator_length = 18
+generator_words = 7
+generator_sep = "-"
+avoid_ambiguous = true
+"#,
+    );
+
+    let cfg = Config::create(None, None).unwrap();
+    assert_eq!(cfg.generator_length, Some(18));
+    assert_eq!(cfg.generator_words, Some(7));
+    assert_eq!(cfg.generator_sep.as_deref(), Some("-"));
+    assert_eq!(cfg.avoid_ambiguous, Some(true));
+
+    // Env overrides file
+    env::set_var("KEVI_GEN_LENGTH", "24");
+    env::set_var("KEVI_GEN_WORDS", "9");
+    env::set_var("KEVI_GEN_SEP", ".");
+    env::set_var("KEVI_AVOID_AMBIGUOUS", "false");
+    let cfg2 = Config::create(None, None).unwrap();
+    assert_eq!(cfg2.generator_length, Some(24));
+    assert_eq!(cfg2.generator_words, Some(9));
+    assert_eq!(cfg2.generator_sep.as_deref(), Some("."));
+    assert_eq!(cfg2.avoid_ambiguous, Some(false));
+
+    // Defaults when neither env nor file provide values
+    env::remove_var("KEVI_GEN_LENGTH");
+    env::remove_var("KEVI_GEN_WORDS");
+    env::remove_var("KEVI_GEN_SEP");
+    env::remove_var("KEVI_AVOID_AMBIGUOUS");
+    let _ = fs::remove_file(
+        PathBuf::from(env::var("KEVI_CONFIG_DIR").unwrap())
+            .join("kevi")
+            .join("config.toml"),
+    );
+
+    let cfg3 = Config::create(None, None).unwrap();
+    assert_eq!(cfg3.generator_length, None);
+    assert_eq!(cfg3.generator_words, None);
+    assert_eq!(cfg3.generator_sep, None);
+    assert_eq!(cfg3.avoid_ambiguous, Some(false));
+}
+
+#[test]
+#[serial]
 fn default_vault_path_uses_platform_data_dir_under_home() {
     let td = tempdir().unwrap();
     env::set_var("HOME", td.path());
@@ -144,7 +203,7 @@ fn backups_rotation_uses_configured_count() {
     let path = td.path().join("vault.ron");
     let backups = 3usize;
     let _cfg = Config {
-        vault_path: path.clone(),
+        vault_path: VaultPath::from(path.clone()),
         clipboard_ttl: None,
         backups: Some(backups),
         generator_length: None,
@@ -173,4 +232,110 @@ fn backups_rotation_uses_configured_count() {
     assert!(Path::new(&format!("{}{}", path.display(), ".2")).exists());
     assert!(Path::new(&format!("{}{}", path.display(), ".3")).exists());
     assert!(!Path::new(&format!("{}{}", path.display(), ".4")).exists());
+}
+
+#[test]
+#[serial]
+fn vault_path_cli_profile_overrides_env_and_file() {
+    let td = tempdir().unwrap();
+    env::set_var("HOME", td.path());
+    env::set_var(
+        "KEVI_CONFIG_DIR",
+        td.path().join("cfg").to_string_lossy().to_string(),
+    );
+
+    // Env and file defaults should be ignored when CLI profile is provided
+    env::set_var("KEVI_VAULT_PATH", "/tmp/env_vault.ron");
+    write_config_file(
+        td.path(),
+        r#"
+vault_path = "/tmp/file_vault.ron"
+default_profile = "home"
+
+[profiles]
+work = { vault_path = "/tmp/work_vault.ron" }
+home = { vault_path = "/tmp/home_vault.ron" }
+"#,
+    );
+
+    let cfg = Config::create(None, Some("work".to_string())).unwrap();
+    assert_eq!(cfg.vault_path, PathBuf::from("/tmp/work_vault.ron"));
+}
+
+#[test]
+#[serial]
+fn vault_path_uses_default_profile_when_present() {
+    let td = tempdir().unwrap();
+    env::set_var("HOME", td.path());
+    env::set_var(
+        "KEVI_CONFIG_DIR",
+        td.path().join("cfg").to_string_lossy().to_string(),
+    );
+    env::remove_var("KEVI_VAULT_PATH");
+
+    write_config_file(
+        td.path(),
+        r#"
+default_profile = "home"
+
+[profiles]
+home = { vault_path = "/tmp/home_vault.ron" }
+work = { vault_path = "/tmp/work_vault.ron" }
+"#,
+    );
+
+    let cfg = Config::create(None, None).unwrap();
+    assert_eq!(cfg.vault_path, PathBuf::from("/tmp/home_vault.ron"));
+}
+
+#[test]
+#[serial]
+fn vault_path_ignores_missing_default_profile_and_falls_back_to_file() {
+    let td = tempdir().unwrap();
+    env::set_var("HOME", td.path());
+    env::set_var(
+        "KEVI_CONFIG_DIR",
+        td.path().join("cfg").to_string_lossy().to_string(),
+    );
+    env::remove_var("KEVI_VAULT_PATH");
+
+    write_config_file(
+        td.path(),
+        r#"
+vault_path = "/tmp/file_vault.ron"
+default_profile = "missing"
+
+[profiles]
+home = { vault_path = "/tmp/home_vault.ron" }
+"#,
+    );
+
+    let cfg = Config::create(None, None).unwrap();
+    assert_eq!(cfg.vault_path, PathBuf::from("/tmp/file_vault.ron"));
+}
+
+#[test]
+#[serial]
+fn unknown_cli_profile_returns_error() {
+    let td = tempdir().unwrap();
+    env::set_var("HOME", td.path());
+    env::set_var(
+        "KEVI_CONFIG_DIR",
+        td.path().join("cfg").to_string_lossy().to_string(),
+    );
+
+    write_config_file(
+        td.path(),
+        r#"
+[profiles]
+home = { vault_path = "/tmp/home_vault.ron" }
+"#,
+    );
+
+    let err = Config::create(None, Some("missing".to_string()))
+        .expect_err("expected unknown profile error");
+    match err {
+        ConfigError::UnknownProfile(name) => assert_eq!(name, "missing"),
+        other => panic!("unexpected error: {other:?}"),
+    }
 }

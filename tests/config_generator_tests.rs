@@ -5,8 +5,7 @@ use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
 
-use kevi::vault::models::VaultData;
-use kevi::vault::persistence::load_vault_file;
+use kevi::api::{load_vault_file, VaultData};
 
 fn write_config(_dir: &std::path::Path, content: &str) {
     // Respect KEVI_CONFIG_DIR for isolation

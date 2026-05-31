@@ -24,15 +24,21 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
+      - name: Verify workspace includes kevi-core
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --format-version 1 --no-deps | grep -q '"name":"kevi-core"'
+
       - name: Build (release)
         shell: bash
         run: |
           set -euo pipefail
           # Best-effort symbol stripping via rustc codegen option
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cargo build --release --locked
+            cargo build --release --workspace --locked
           else
-            RUSTFLAGS="-C strip=symbols" cargo build --release --locked
+            RUSTFLAGS="-C strip=symbols" cargo build --release --workspace --locked
           fi
 
       - name: Prepare artifact

@@ -1,11 +1,11 @@
 Security model and cryptography
 ===============================
 
-This document explains Kevi’s security goals, the cryptography it uses,
+This document explains Kevi's security goals, the cryptography it uses,
 and how to use it safely in practice.
 
 It is aimed at technically minded users who want to understand what
-Kevi does – and does not – protect against.
+Kevi does - and does not - protect against.
 
 
 Threat model
@@ -23,11 +23,11 @@ Kevi is designed to protect against:
 * **Accidental leakage** of secrets through debug output, log
   messages, or unredacted `Debug` formatting.
 
-### Non‑goals
+### Non-goals
 
 Kevi is **not** intended to protect against:
 
-* A fully compromised operating system (root access, kernel‑level
+* A fully compromised operating system (root access, kernel-level
   malware, keyloggers, or screen capture).
 * An attacker who can watch your terminal or clipboard in real time
   while you use Kevi.
@@ -41,10 +41,10 @@ for a compromised platform or hostile physical environment.
 Cryptography
 ------------
 
-Kevi’s cryptographic primitives and parameters are implemented in
-`src/core/crypto.rs`.
+Kevi's cryptographic primitives and parameters are implemented in
+`src/cryptography/primitives.rs`.
 
-### Key derivation – Argon2id
+### Key derivation - Argon2id
 
 Kevi derives an encryption key from your master password using the
 **Argon2id** key derivation function:
@@ -62,35 +62,35 @@ Default parameters (as of 2025) are defined in `default_params()`:
 These values are chosen as a conservative baseline for an interactive
 CLI tool on modern hardware. You can think of them as:
 
-* High enough to make large‑scale brute‑force attacks expensive.
+* High enough to make large-scale brute-force attacks expensive.
 * Still fast enough that unlocking the vault is tolerable on a typical
   developer workstation.
 
 Argon2id is resistant to GPU and ASIC optimization and combines
 benefits of Argon2i and Argon2d.
 
-### Vault encryption – AES‑256‑GCM
+### Vault encryption - AES-256-GCM
 
-Vault contents are encrypted and authenticated with **AES‑256‑GCM**
-using the `ring` crate’s AEAD API:
+Vault contents are encrypted and authenticated with **AES-256-GCM**
+using the `ring` crate's AEAD API:
 
 * Algorithm identifier: `AEAD_AES256GCM = 1` (internal constant)
-* Key length: 32 bytes (256‑bit key)
+* Key length: 32 bytes (256-bit key)
 * Nonce length: 12 bytes (96 bits), `NONCE_LEN = 12`
 
 Encryption workflow (`encrypt_vault` / `encrypt_vault_with_key`):
 
-1. A random 16‑byte salt is generated (`SALT_LEN = 16`).
-2. A random 12‑byte nonce is generated for AES‑GCM.
+1. A random 16-byte salt is generated (`SALT_LEN = 16`).
+2. A random 12-byte nonce is generated for AES-GCM.
 3. A header is constructed containing:
    * Magic bytes: `"KEVI"`
    * Version: `1`
    * KDF identifier: `2` (Argon2id)
-   * AEAD identifier: `1` (AES‑256‑GCM)
+   * AEAD identifier: `1` (AES-256-GCM)
    * Argon2 parameters `(m_cost_kib, t_cost, p_lanes)`
    * Salt (16 bytes)
    * Nonce (12 bytes)
-4. The header is used as **associated data (AAD)** for AES‑GCM, so any
+4. The header is used as **associated data (AAD)** for AES-GCM, so any
    tampering with the header is detected.
 5. The plaintext vault is encrypted in place and an authentication tag
    is appended.
@@ -110,24 +110,24 @@ to fail.
 ### Header fingerprinting
 
 Kevi computes a **header fingerprint** (excluding the nonce) to bind
-derived‑key sessions to a specific vault configuration:
+derived-key sessions to a specific vault configuration:
 
-* Function: `header_fingerprint_excluding_nonce` (SHA‑256 over
+* Function: `header_fingerprint_excluding_nonce` (SHA-256 over
   selected header fields).
 * Inputs: header magic, version, KDF/AEAD IDs, Argon2 parameters,
   and salt.
-* Output: a hex‑encoded 256‑bit fingerprint string.
+* Output: a hex-encoded 256-bit fingerprint string.
 
 This fingerprint is used to ensure that a cached derived key is only
-re‑used with vaults that have the same cryptographic configuration,
+re-used with vaults that have the same cryptographic configuration,
 preventing accidental key reuse across incompatible vaults.
 
 
-Derived‑key sessions
+Derived-key sessions
 --------------------
 
 To avoid repeatedly typing your master password, Kevi supports
-short‑lived **derived‑key sessions** managed by commands like
+short-lived **derived-key sessions** managed by commands like
 `unlock` and `lock`.
 
 ### Session files
@@ -154,7 +154,7 @@ Tests (see `tests/session_tests.rs`) verify that:
 * Session files are only accepted when not expired.
 * The fingerprint is checked and mismatches cause the cache to be
   ignored.
-* File permissions on Unix are restrictive (no world‑readable
+* File permissions on Unix are restrictive (no world-readable
   sessions).
 
 ### Security considerations for sessions
@@ -186,12 +186,12 @@ clear memory when secrets are dropped.
 
 ### memlock (optional)
 
-On Unix‑like systems, enabling the `memlock` feature attempts to lock
+On Unix-like systems, enabling the `memlock` feature attempts to lock
 process memory containing sensitive data to prevent it from being
 swapped to disk.
 
 * This relies on OS primitives like `mlock` / `mlockall`.
-* It is a **best‑effort** mitigation and may require additional OS
+* It is a **best-effort** mitigation and may require additional OS
   configuration (e.g. raising `RLIMIT_MEMLOCK`).
 * When enabled, tests (`tests/memlock.rs`) exercise the
   lock/unlock path.
@@ -207,11 +207,11 @@ Clipboard handling
 Kevi integrates with the system clipboard via crates such as
 `copypasta` and `x11-clipboard` (on X11). Clipboard behavior is:
 
-* **Opt‑in visibility**:
+* **Opt-in visibility**:
   * By default, secrets are copied to clipboard instead of being
     printed.
   * `--echo` is required to print a secret to stdout.
-* **TTL (time‑to‑live)**:
+* **TTL (time-to-live)**:
   * Kevi uses a configurable TTL, after which it will attempt to clear
     the clipboard or overwrite it with dummy data.
   * The exact reliability of clipboard clearing depends heavily on the
@@ -267,7 +267,7 @@ Recommendations:
 
 ### Session file permissions
 
-On Unix‑like systems, tests assert that session files are created with
+On Unix-like systems, tests assert that session files are created with
 restrictive permissions (no group/world read access). This ensures
 that another unprivileged user on the same machine cannot trivially
 read your cached keys.
@@ -278,16 +278,16 @@ Operational guidance
 
 ### Choosing a master password
 
-Because Kevi’s security ultimately depends on your master password,
+Because Kevi's security ultimately depends on your master password,
 you should:
 
 * Use a **strong, unique passphrase**, preferably generated or derived
   from a long random word sequence.
 * Avoid reusing passwords from other services.
-* Consider using a passphrase of at least 4–6 random words or 16+
+* Consider using a passphrase of at least 4-6 random words or 16+
   random characters.
 
-### Using Kevi safely day‑to‑day
+### Using Kevi safely day-to-day
 
 * Prefer copying passwords to clipboard over echoing them in the
   terminal when practical.
@@ -301,14 +301,31 @@ you should:
 
 Some limitations and potential future improvements:
 
-* There is currently no built‑in multi‑device sync; you are
+* There is currently no built-in multi-device sync; you are
   responsible for syncing the vault file if needed.
-* There is no hardware‑backed key storage (e.g. TPM, Secure Enclave)
+* There is no hardware-backed key storage (e.g. TPM, Secure Enclave)
   integration yet.
-* Side‑channel resistance (timing, cache) relies largely on
-  well‑reviewed upstream libraries (`ring`, `argon2`, etc.), but
+* Side-channel resistance (timing, cache) relies largely on
+  well-reviewed upstream libraries (`ring`, `argon2`, etc.), but
   Kevi itself has not undergone a formal audit.
 
-If you rely on Kevi for high‑value secrets, consider having your
+If you rely on Kevi for high-value secrets, consider having your
 deployment or configuration reviewed by someone familiar with applied
 cryptography and secure systems design.
+
+
+Security disclosures
+--------------------
+
+If you believe you found a security issue, please report it privately
+to the maintainers instead of opening a public issue with exploit
+details.
+
+Include, when possible:
+
+* Affected version/commit.
+* Reproduction steps or proof of concept.
+* Impact assessment and any suggested mitigations.
+
+We will triage reports as quickly as possible and coordinate disclosure
+timing for confirmed vulnerabilities.

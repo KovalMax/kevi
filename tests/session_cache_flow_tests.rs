@@ -1,7 +1,5 @@
 use assert_cmd::Command;
-use kevi::session_management::resolver::dk_session_file_for;
-use kevi::vault::models::{VaultData, VaultEntry};
-use kevi::vault::persistence::save_vault_file;
+use kevi::api::{dk_session_file_for, save_vault_file, VaultData, VaultEntry};
 use secrecy::SecretString;
 use tempfile::tempdir;
 

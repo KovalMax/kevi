@@ -2,19 +2,19 @@ use crate::cryptography::primitives::{
     derive_key_argon2id, header_fingerprint_excluding_nonce, KeviHeader, AEAD_AES256GCM,
     HEADER_VERSION, KDF_ARGON2ID, KEY_LEN, NONCE_LEN,
 };
+use crate::domain::VaultResult;
+use crate::error::KeviError;
 #[cfg(target_os = "macos")]
 use crate::session_management::keychain_store::MacOsKeychainSessionStore;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use crate::session_management::keyring_store::LinuxWindowsKeyringSessionStore;
 use crate::session_management::session::{load, save};
 use crate::vault::ports::{DerivedKey, HeaderParams, KeyResolver};
-use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose, Engine as _};
 use secrecy::{ExposeSecret, SecretBox};
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,8 +31,8 @@ pub struct DerivedKeyStored {
     pub key_b64: String,
 }
 
-pub fn dk_session_file_for(vault_path: &std::path::Path) -> PathBuf {
-    vault_path.with_extension("dksession")
+pub fn dk_session_file_for<P: AsRef<Path>>(vault_path: P) -> PathBuf {
+    vault_path.as_ref().with_extension("dksession")
 }
 
 pub fn save_derived_key_session(
@@ -40,7 +40,7 @@ pub fn save_derived_key_session(
     fingerprint: &str,
     key: &SecretBox<Vec<u8>>,
     ttl: Duration,
-) -> Result<()> {
+) -> VaultResult<()> {
     let stored = DerivedKeyStored {
         header_fingerprint_hex: fingerprint.to_string(),
         key_b64: general_purpose::STANDARD.encode(key.expose_secret()),
@@ -48,22 +48,19 @@ pub fn save_derived_key_session(
     save(path, &stored, ttl)
 }
 
-pub fn clear_derived_key_cache_for_vault(vault_path: &std::path::Path) -> Result<()> {
+pub fn clear_derived_key_cache_for_vault(vault_path: &std::path::Path) -> VaultResult<()> {
     let (store, _) = session_store_for_vault(vault_path);
-    store
-        .clear_cached()
-        .map_err(|error| anyhow!("failed to clear secure derived-key cache: {error}"))?;
+    store.clear_cached()?;
 
-    // Best-effort cleanup of legacy file cache for migrations/fallback toggles.
     crate::session_management::session::clear(&vault_path.with_extension("dksession"))?;
 
     Ok(())
 }
 
 pub trait DerivedKeySessionStore: Send + Sync {
-    fn load_cached(&self) -> Result<Option<DerivedKeyStored>>;
-    fn save_cached(&self, stored: &DerivedKeyStored, ttl: Duration) -> Result<()>;
-    fn clear_cached(&self) -> Result<()>;
+    fn load_cached(&self) -> VaultResult<Option<DerivedKeyStored>>;
+    fn save_cached(&self, stored: &DerivedKeyStored, ttl: Duration) -> VaultResult<()>;
+    fn clear_cached(&self) -> VaultResult<()>;
 }
 
 pub struct FileDerivedKeySessionStore {
@@ -77,15 +74,15 @@ impl FileDerivedKeySessionStore {
 }
 
 impl DerivedKeySessionStore for FileDerivedKeySessionStore {
-    fn load_cached(&self) -> Result<Option<DerivedKeyStored>> {
+    fn load_cached(&self) -> VaultResult<Option<DerivedKeyStored>> {
         load::<DerivedKeyStored>(&self.path)
     }
 
-    fn save_cached(&self, stored: &DerivedKeyStored, ttl: Duration) -> Result<()> {
+    fn save_cached(&self, stored: &DerivedKeyStored, ttl: Duration) -> VaultResult<()> {
         save(&self.path, stored, ttl)
     }
 
-    fn clear_cached(&self) -> Result<()> {
+    fn clear_cached(&self) -> VaultResult<()> {
         crate::session_management::session::clear(&self.path)
     }
 }
@@ -93,29 +90,29 @@ impl DerivedKeySessionStore for FileDerivedKeySessionStore {
 struct DisabledSessionStore;
 
 impl DerivedKeySessionStore for DisabledSessionStore {
-    fn load_cached(&self) -> Result<Option<DerivedKeyStored>> {
+    fn load_cached(&self) -> VaultResult<Option<DerivedKeyStored>> {
         Ok(None)
     }
 
-    fn save_cached(&self, _stored: &DerivedKeyStored, _ttl: Duration) -> Result<()> {
-        Err(anyhow!("secure derived-key cache is unavailable"))
+    fn save_cached(&self, _stored: &DerivedKeyStored, _ttl: Duration) -> VaultResult<()> {
+        Err(KeviError::vault("secure derived-key cache is unavailable"))
     }
 
-    fn clear_cached(&self) -> Result<()> {
+    fn clear_cached(&self) -> VaultResult<()> {
         Ok(())
     }
 }
 
 pub trait PasswordResolver {
-    fn resolve_password(&self) -> Result<String> {
+    fn resolve_password(&self) -> VaultResult<String> {
         if let Ok(pw) = env::var("KEVI_PASSWORD") {
             return Ok(pw);
         }
 
-        let pw = inquire::Password::new("Master password")
+        inquire::Password::new("Master password")
             .without_confirmation()
-            .prompt()?;
-        Ok(pw)
+            .prompt()
+            .map_err(|e| KeviError::prompt(e.to_string()))
     }
 }
 
@@ -126,18 +123,18 @@ struct MacOsHybridSessionStore {
 
 #[cfg(target_os = "macos")]
 impl DerivedKeySessionStore for MacOsHybridSessionStore {
-    fn load_cached(&self) -> Result<Option<DerivedKeyStored>> {
+    fn load_cached(&self) -> VaultResult<Option<DerivedKeyStored>> {
         self.keychain.load_cached()
     }
 
-    fn save_cached(&self, stored: &DerivedKeyStored, ttl: Duration) -> Result<()> {
+    fn save_cached(&self, stored: &DerivedKeyStored, ttl: Duration) -> VaultResult<()> {
         if self.keychain.save_cached(stored, ttl).is_ok() {
             return Ok(());
         }
-        Err(anyhow!("secure derived-key cache is unavailable"))
+        Err(KeviError::vault("secure derived-key cache is unavailable"))
     }
 
-    fn clear_cached(&self) -> Result<()> {
+    fn clear_cached(&self) -> VaultResult<()> {
         self.keychain.clear_cached()
     }
 }
@@ -149,18 +146,18 @@ struct KeyringHybridSessionStore {
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 impl DerivedKeySessionStore for KeyringHybridSessionStore {
-    fn load_cached(&self) -> Result<Option<DerivedKeyStored>> {
+    fn load_cached(&self) -> VaultResult<Option<DerivedKeyStored>> {
         self.keyring.load_cached()
     }
 
-    fn save_cached(&self, stored: &DerivedKeyStored, ttl: Duration) -> Result<()> {
+    fn save_cached(&self, stored: &DerivedKeyStored, ttl: Duration) -> VaultResult<()> {
         if self.keyring.save_cached(stored, ttl).is_ok() {
             return Ok(());
         }
-        Err(anyhow!("secure derived-key cache is unavailable"))
+        Err(KeviError::vault("secure derived-key cache is unavailable"))
     }
 
-    fn clear_cached(&self) -> Result<()> {
+    fn clear_cached(&self) -> VaultResult<()> {
         self.keyring.clear_cached()
     }
 }
@@ -300,7 +297,7 @@ impl CachedKeyResolver {
 }
 
 impl KeyResolver for CachedKeyResolver {
-    fn resolve_for_header(&self, hdr: &KeviHeader) -> Result<DerivedKey> {
+    fn resolve_for_header(&self, hdr: &KeviHeader) -> VaultResult<DerivedKey> {
         let fp = header_fingerprint_excluding_nonce(hdr);
         let cached = match self.session_store.load_cached() {
             Ok(value) => value,
@@ -323,11 +320,10 @@ impl KeyResolver for CachedKeyResolver {
                 }
             }
         }
-        // Cache miss: derive from passphrase
+
         let pw = self.resolve_password()?;
         let key_arr = derive_key_argon2id(&pw, &hdr.salt, hdr.m_cost_kib, hdr.t_cost, hdr.p_lanes)?;
         let key_vec = SecretBox::new(Box::new(key_arr.to_vec()));
-        // Default TTL: 900s unless KEVI_UNLOCK_TTL provided
         let ttl_secs = env::var("KEVI_UNLOCK_TTL")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
@@ -348,13 +344,16 @@ impl KeyResolver for CachedKeyResolver {
         Ok(DerivedKey { key: key_vec })
     }
 
-    fn resolve_for_new_vault(&self, params: HeaderParams, salt: [u8; 16]) -> Result<DerivedKey> {
+    fn resolve_for_new_vault(
+        &self,
+        params: HeaderParams,
+        salt: [u8; 16],
+    ) -> VaultResult<DerivedKey> {
         let pw = self.resolve_password()?;
         let key_arr =
             derive_key_argon2id(&pw, &salt, params.m_cost_kib, params.t_cost, params.p_lanes)?;
         let key_vec = SecretBox::new(Box::new(key_arr.to_vec()));
 
-        // Also cache it
         let hdr = KeviHeader {
             version: HEADER_VERSION,
             kdf_id: KDF_ARGON2ID,
@@ -404,7 +403,7 @@ impl BypassKeyResolver {
 }
 
 impl KeyResolver for BypassKeyResolver {
-    fn resolve_for_header(&self, hdr: &KeviHeader) -> Result<DerivedKey> {
+    fn resolve_for_header(&self, hdr: &KeviHeader) -> VaultResult<DerivedKey> {
         let pw = self.resolve_password()?;
         let key_arr = derive_key_argon2id(&pw, &hdr.salt, hdr.m_cost_kib, hdr.t_cost, hdr.p_lanes)?;
         Ok(DerivedKey {
@@ -412,7 +411,11 @@ impl KeyResolver for BypassKeyResolver {
         })
     }
 
-    fn resolve_for_new_vault(&self, params: HeaderParams, salt: [u8; 16]) -> Result<DerivedKey> {
+    fn resolve_for_new_vault(
+        &self,
+        params: HeaderParams,
+        salt: [u8; 16],
+    ) -> VaultResult<DerivedKey> {
         let pw = self.resolve_password()?;
         let key_arr =
             derive_key_argon2id(&pw, &salt, params.m_cost_kib, params.t_cost, params.p_lanes)?;

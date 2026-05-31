@@ -1,11 +1,11 @@
-use kevi::vault::models::VaultEntry;
+use kevi::api::VaultEntry;
 use secrecy::{ExposeSecret, SecretString};
 
 #[test]
 fn serde_round_trip_username_and_password() {
     // Build an entry with a secret username and password
     let entry = VaultEntry {
-        label: "label".to_string(),
+        label: "label".into(),
         username: Some(SecretString::new("user123".into())),
         password: SecretString::new("p@ssw0rd".into()),
         notes: Some("n".to_string()),

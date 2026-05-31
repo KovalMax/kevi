@@ -1,8 +1,4 @@
-use kevi::filesystem::store::FileByteStore;
-use kevi::session_management::resolver::CachedKeyResolver;
-use kevi::vault::codec::RonCodec;
-use kevi::vault::models::VaultEntry;
-use kevi::vault::service::VaultService;
+use kevi::api::{CachedKeyResolver, FileByteStore, RonCodec, VaultEntry, VaultService};
 use secrecy::SecretString;
 use std::env;
 use std::sync::Arc;
@@ -25,7 +21,7 @@ fn service_add_and_load_round_trip() {
 
     // Add entry
     let entry = VaultEntry {
-        label: "svc_label".to_string(),
+        label: "svc_label".into(),
         username: Some(SecretString::new("u".into())),
         password: SecretString::new("pw".into()),
         notes: None,
@@ -77,4 +73,21 @@ fn service_remove_entry() {
     let after = service.load().unwrap();
     assert_eq!(after.entries.len(), 1);
     assert_eq!(after.entries[0].label, "b");
+}
+
+#[test]
+fn service_rejects_plaintext_with_clear_error() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("vault.ron");
+    std::fs::write(&path, "(entries:[],otps:[])").unwrap();
+    env::set_var("KEVI_PASSWORD", "svcpass");
+
+    let store = Arc::new(FileByteStore::new(path.clone()));
+    let codec = Arc::new(RonCodec);
+    let resolver = Arc::new(CachedKeyResolver::new(path));
+    let service = VaultService::new(store, codec, resolver);
+
+    let err = service.load().expect_err("plaintext vault must fail");
+    let msg = err.to_string();
+    assert!(msg.contains("missing KEVI header"));
 }

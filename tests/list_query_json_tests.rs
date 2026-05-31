@@ -3,8 +3,7 @@ use secrecy::SecretString;
 use std::process::Command;
 use tempfile::tempdir;
 
-use kevi::vault::models::{VaultData, VaultEntry};
-use kevi::vault::persistence::save_vault_file;
+use kevi::api::{save_vault_file, VaultData, VaultEntry};
 
 #[test]
 fn list_filters_with_query_and_emits_json() {

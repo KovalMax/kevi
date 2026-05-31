@@ -25,22 +25,28 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
+      - name: Verify workspace includes kevi-core
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --format-version 1 --no-deps | grep -q '"name":"kevi-core"'
+
       - name: Format check
         run: cargo fmt --all -- --check
 
       - name: Clippy (deny warnings)
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Build
-        run: cargo build --all --verbose
+        run: cargo build --workspace --verbose
 
       - name: Test
         if: runner.os != 'Linux'
-        run: cargo test --all --verbose
+        run: cargo test --workspace --verbose
 
       - name: Test with memlock feature (Linux only)
         if: runner.os == 'Linux'
-        run: cargo test --all --features memlock --verbose
+        run: cargo test --workspace --features memlock --verbose
 
   link-check:
     name: Docs link check (lychee)

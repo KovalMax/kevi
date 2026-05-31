@@ -1,7 +1,7 @@
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use crate::session_management::resolver::{DerivedKeySessionStore, DerivedKeyStored};
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-use anyhow::Result;
+use crate::{domain::VaultResult, error::KeviError};
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use keyring::Entry;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -19,7 +19,7 @@ pub struct LinuxWindowsKeyringSessionStore {
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 impl LinuxWindowsKeyringSessionStore {
-    pub fn new(vault_path: &Path) -> Result<Self> {
+    pub fn new(vault_path: &Path) -> VaultResult<Self> {
         let mut hasher = Sha256::new();
         hasher.update(vault_path.to_string_lossy().as_bytes());
         let account = hex::encode(hasher.finalize());
@@ -30,14 +30,15 @@ impl LinuxWindowsKeyringSessionStore {
         })
     }
 
-    fn entry(&self) -> Result<Entry> {
-        Ok(Entry::new(self.service.as_str(), self.account.as_str())?)
+    fn entry(&self) -> VaultResult<Entry> {
+        Entry::new(self.service.as_str(), self.account.as_str())
+            .map_err(|error| KeviError::vault(error.to_string()))
     }
 }
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 impl DerivedKeySessionStore for LinuxWindowsKeyringSessionStore {
-    fn load_cached(&self) -> Result<Option<DerivedKeyStored>> {
+    fn load_cached(&self) -> VaultResult<Option<DerivedKeyStored>> {
         let entry = self.entry()?;
         match entry.get_password() {
             Ok(value) => Ok(serde_json::from_str::<DerivedKeyStored>(&value).ok()),
@@ -46,14 +47,17 @@ impl DerivedKeySessionStore for LinuxWindowsKeyringSessionStore {
         }
     }
 
-    fn save_cached(&self, stored: &DerivedKeyStored, _ttl: Duration) -> Result<()> {
+    fn save_cached(&self, stored: &DerivedKeyStored, _ttl: Duration) -> VaultResult<()> {
         let entry = self.entry()?;
-        let payload = serde_json::to_string(stored)?;
-        entry.set_password(payload.as_str())?;
+        let payload =
+            serde_json::to_string(stored).map_err(|error| KeviError::vault(error.to_string()))?;
+        entry
+            .set_password(payload.as_str())
+            .map_err(|error| KeviError::vault(error.to_string()))?;
         Ok(())
     }
 
-    fn clear_cached(&self) -> Result<()> {
+    fn clear_cached(&self) -> VaultResult<()> {
         let entry = self.entry()?;
         let _ = entry.delete_credential();
         Ok(())

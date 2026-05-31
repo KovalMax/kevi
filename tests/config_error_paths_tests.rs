@@ -1,4 +1,4 @@
-use kevi::config::app_config::{load_file_config_with_path, save_file_config, Config, FileConfig};
+use kevi::api::{load_file_config_with_path, save_file_config, Config, FileConfig};
 use serial_test::serial;
 use std::env;
 use std::fs;
