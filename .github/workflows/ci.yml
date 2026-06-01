@@ -75,7 +75,8 @@ jobs:
 
   coverage:
     name: Code coverage (cargo-llvm-cov)
-    runs-on: macos-15
+    runs-on: macos-latest
+    needs: build-test
     steps:
       - name: Checkout
         uses: actions/checkout@v6

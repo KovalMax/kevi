@@ -32,9 +32,10 @@ fn profile_precedence_cli_path_over_profile_over_env() {
     seed_vault(&profile_vault, "profile-key", "profile-secret");
     seed_vault(&cli_vault, "cli-key", "cli-secret");
 
+    let profile_vault_for_toml = profile_vault.to_string_lossy().replace('\\', "\\\\");
     let config_toml = format!(
         "default_profile = \"work\"\n[profiles.work]\nvault_path = \"{}\"\n",
-        profile_vault.display()
+        profile_vault_for_toml
     );
     fs::write(config_dir.join("kevi").join("config.toml"), config_toml).expect("write config");
 
