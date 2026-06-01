@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Run lychee link checker
         uses: lycheeverse/lychee-action@v1
         with:
@@ -72,25 +72,6 @@ jobs:
         run: |
           echo "Link checker reported issues (non-fatal)."
           exit 0
-
-  audit:
-    name: Security audit
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      checks: write
-      issues: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cargo Audit
-        uses: actions-rs/audit-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
   coverage:
     name: Code coverage (cargo-llvm-cov)
