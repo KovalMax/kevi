@@ -129,6 +129,15 @@ pub async fn run() -> Result<(), KeviError> {
             vault.handle_lock().await?;
         }
         Commands::Tui { path } => {
+            if let Some(path_arg) = path.as_deref() {
+                let explicit_path = PathBuf::from(path_arg);
+                if !explicit_path.exists() {
+                    return Err(KeviError::tui(format!(
+                        "failed to load vault for TUI: vault file does not exist: {}",
+                        explicit_path.display()
+                    )));
+                }
+            }
             let config = load_config(path.map(PathBuf::from), cli.profile.clone())?;
             tui::launch(&config)
                 .await
