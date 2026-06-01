@@ -1,3 +1,5 @@
+#[cfg(target_family = "unix")]
+use assert_cmd::cargo::CommandCargoExt;
 use assert_cmd::Command;
 use kevi::api::{save_vault_file, VaultData};
 use predicates::str::contains;
@@ -15,6 +17,7 @@ fn test_cli() {
     // 1. List - initially empty
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("KEVI_CONFIG_DIR", config_dir.to_str().unwrap())
+        .env("KEVI_INSECURE_CACHE_FALLBACK", "1")
         .arg("--help");
 
     cmd.assert()
@@ -47,6 +50,7 @@ fn test_otp() {
     cmd.env("KEVI_CONFIG_DIR", config_dir.to_str().unwrap())
         .env("KEVI_DATA_DIR", data_dir.to_str().unwrap())
         .env("KEVI_PASSWORD", "pw")
+        .env("KEVI_INSECURE_CACHE_FALLBACK", "1")
         .args([
             "otp",
             "add",
@@ -70,6 +74,7 @@ fn test_otp() {
     cmd2.env("KEVI_CONFIG_DIR", config_dir.to_str().unwrap())
         .env("KEVI_DATA_DIR", data_dir.to_str().unwrap())
         .env("KEVI_PASSWORD", "pw")
+        .env("KEVI_INSECURE_CACHE_FALLBACK", "1")
         .args(["otp", "list", "--json"])
         .assert()
         .success()
@@ -90,19 +95,23 @@ fn test_tui_runs() {
         cmd.env("KEVI_CONFIG_DIR", &config_dir)
             .env("KEVI_DATA_DIR", &data_dir)
             .env("KEVI_PASSWORD", "pw")
+            .env("KEVI_INSECURE_CACHE_FALLBACK", "1")
             .arg("init")
             .assert()
             .success();
 
-        let mut tui_cmd = Command::cargo_bin("kevi").unwrap();
+        let mut tui_cmd = std::process::Command::cargo_bin("kevi").unwrap();
         tui_cmd
             .env("KEVI_CONFIG_DIR", &config_dir)
             .env("KEVI_DATA_DIR", &data_dir)
             .env("KEVI_PASSWORD", "pw")
+            .env("KEVI_INSECURE_CACHE_FALLBACK", "1")
             .arg("tui");
 
         // Run briefly and kill
-        let _ = tui_cmd.output().expect("tui starts");
+        let mut child = tui_cmd.spawn().expect("tui starts");
         std::thread::sleep(std::time::Duration::from_millis(500));
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }

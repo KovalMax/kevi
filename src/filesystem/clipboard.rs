@@ -63,9 +63,28 @@ pub fn copy_with_ttl(
     Ok(())
 }
 
+#[derive(Debug)]
 pub enum ClipboardCopyError {
     Unavailable(KeviError),
     CopyFailed(KeviError),
+}
+
+pub fn clipboard_copy_error_message(error: &ClipboardCopyError) -> String {
+    match error {
+        ClipboardCopyError::Unavailable(error) => {
+            format!("⚠️ Clipboard not available: {error}")
+        }
+        ClipboardCopyError::CopyFailed(error) => {
+            format!("⚠️ Failed to copy to clipboard: {error}")
+        }
+    }
+}
+
+pub fn report_clipboard_copy_result(result: Result<(), ClipboardCopyError>) {
+    match result {
+        Ok(()) => {}
+        Err(error) => eprintln!("{}", clipboard_copy_error_message(&error)),
+    }
 }
 
 pub fn copy_with_ttl_using_system_clipboard(

@@ -12,10 +12,12 @@ use crate::cryptography::wordlist::WORDS;
 use crate::domain::{EntryLabel, VaultResult};
 use crate::error::KeviError;
 use crate::filesystem::clipboard::{
-    copy_with_ttl_using_system_clipboard, environment_warning, ttl_seconds, ClipboardCopyError,
+    copy_with_ttl_using_system_clipboard, environment_warning, report_clipboard_copy_result,
+    ttl_seconds,
 };
-use crate::session_management::resolver::{dk_session_file_for, save_derived_key_session};
-use crate::session_management::session::clear;
+use crate::session_management::resolver::{
+    clear_derived_key_cache_for_vault, dk_session_file_for, save_derived_key_session,
+};
 use crate::vault::models::{AddOptions, VaultData, VaultEntry};
 use crate::vault::persistence::save_vault_file;
 use crate::vault::ports::{CoreRng, GenPolicy, PasswordGenerator};
@@ -198,15 +200,7 @@ impl<'config> Vault<'config> {
             eprintln!("⚠️ {warn}");
         }
         let secret = SecretString::new(value.into());
-        match copy_with_ttl_using_system_clipboard(&secret, ttl) {
-            Ok(()) => {}
-            Err(ClipboardCopyError::Unavailable(error)) => {
-                eprintln!("⚠️ Clipboard not available: {error}");
-            }
-            Err(ClipboardCopyError::CopyFailed(error)) => {
-                eprintln!("⚠️ Failed to copy to clipboard: {error}");
-            }
-        }
+        report_clipboard_copy_result(copy_with_ttl_using_system_clipboard(&secret, ttl));
 
         Ok(())
     }
@@ -519,8 +513,8 @@ impl<'config> Vault<'config> {
     }
 
     pub async fn handle_lock(&self) -> VaultResult<()> {
-        let dk_path = dk_session_file_for(&self.config.vault_path);
-        spawn_blocking(move || clear(&dk_path))
+        let vault_path = self.config.vault_path.clone();
+        spawn_blocking(move || clear_derived_key_cache_for_vault(vault_path.as_path()))
             .await
             .map_err(|_| join_error("clearing derived key session"))?
             .map_err(|e| vault_error("failed to clear derived key session", e))?;

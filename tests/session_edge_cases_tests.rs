@@ -61,6 +61,7 @@ fn cached_key_resolver_derives_when_cached_fingerprint_mismatches() {
     let dir = tempdir().expect("tempdir");
     let vault_path = dir.path().join("vault.ron");
     let dk_path = dk_session_file_for(&vault_path);
+    env::set_var("KEVI_INSECURE_CACHE_FALLBACK", "1");
     let resolver = CachedKeyResolver::new(vault_path.clone());
     let header = build_header();
     let fingerprint = header_fingerprint_excluding_nonce(&header);
@@ -79,6 +80,7 @@ fn cached_key_resolver_derives_when_cached_fingerprint_mismatches() {
         .resolve_for_header(&header)
         .expect("resolver should derive on mismatch");
     env::remove_var("KEVI_PASSWORD");
+    env::remove_var("KEVI_INSECURE_CACHE_FALLBACK");
 
     assert_eq!(derived.key.expose_secret().len(), 32);
     let stored: DerivedKeyStored = load(&dk_path)
@@ -93,6 +95,7 @@ fn cached_key_resolver_derives_when_cached_base64_is_invalid() {
     let dir = tempdir().expect("tempdir");
     let vault_path = dir.path().join("vault.ron");
     let dk_path = dk_session_file_for(&vault_path);
+    env::set_var("KEVI_INSECURE_CACHE_FALLBACK", "1");
     let resolver = CachedKeyResolver::new(vault_path);
     let header = build_header();
     let fingerprint = header_fingerprint_excluding_nonce(&header);
@@ -116,6 +119,7 @@ fn cached_key_resolver_derives_when_cached_base64_is_invalid() {
         .resolve_for_header(&header)
         .expect("resolver should derive on invalid base64");
     env::remove_var("KEVI_PASSWORD");
+    env::remove_var("KEVI_INSECURE_CACHE_FALLBACK");
 
     assert_eq!(derived.key.expose_secret().len(), 32);
     let stored: DerivedKeyStored = load(&dk_path)

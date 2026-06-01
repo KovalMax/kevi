@@ -42,7 +42,6 @@ pub fn load<T: DeserializeOwned>(path: &Path) -> VaultResult<Option<T>> {
     let envelope: SessionEnvelope<T> = match ron::from_str(&content) {
         Ok(v) => v,
         Err(_) => {
-            // Corrupt or invalid format; clear it
             let _ = fs::remove_file(path);
             return Ok(None);
         }
@@ -57,8 +56,15 @@ pub fn load<T: DeserializeOwned>(path: &Path) -> VaultResult<Option<T>> {
 }
 
 pub fn clear(path: &Path) -> VaultResult<()> {
-    if path.exists() {
-        let _ = fs::remove_file(path);
+    match fs::remove_file(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(KeviError::io(format!(
+                "failed to clear session file: {error}"
+            )))
+        }
     }
+
     Ok(())
 }

@@ -34,14 +34,17 @@ pub mod api {
         HEADER_VERSION, KDF_ARGON2ID, NONCE_LEN, SALT_LEN,
     };
 
-    pub use crate::filesystem::clipboard::{copy_with_ttl, ClipboardEngine};
+    pub use crate::filesystem::clipboard::{
+        clipboard_copy_error_message, copy_with_ttl, ClipboardCopyError, ClipboardEngine,
+    };
     pub use crate::filesystem::store::FileByteStore;
 
     pub use crate::session_management::resolver::{
-        dk_session_file_for, save_derived_key_session, BypassKeyResolver, CachedKeyResolver,
+        clear_derived_key_cache_for_vault, dk_session_file_for, save_derived_key_session,
+        session_store_for_vault, BypassKeyResolver, CachedKeyResolver, DerivedKeySessionStore,
         DerivedKeyStored,
     };
-    pub use crate::session_management::session::{clear, load};
+    pub use crate::session_management::session::{clear, load, save};
 
     pub use crate::tui::app::{App, FormField, Mode, View};
     pub use crate::tui::views::confirm::render_confirm;

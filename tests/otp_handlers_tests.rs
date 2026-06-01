@@ -5,7 +5,7 @@ use kevi::api::{
     OtpListOptions, OtpRemoveOptions, VaultCodec, VaultData, VaultPath, VaultResult, VaultService,
     SALT_LEN,
 };
-use rand::{rng, RngCore};
+use rand::{rng, Rng};
 use secrecy::{ExposeSecret, SecretBox};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};

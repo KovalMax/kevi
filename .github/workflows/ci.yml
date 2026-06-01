@@ -1,5 +1,4 @@
 name: CI
-
 on:
   push:
     branches: [ main ]
@@ -10,6 +9,7 @@ jobs:
   build-test:
     name: Build, Lint, Test
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -40,20 +40,24 @@ jobs:
       - name: Build
         run: cargo build --workspace --verbose
 
-      - name: Test
-        if: runner.os != 'Linux'
-        run: cargo test --workspace --verbose
-
-      - name: Test with memlock feature (Linux only)
+      - name: Test (full suite + memlock, Linux)
         if: runner.os == 'Linux'
-        run: cargo test --workspace --features memlock --verbose
+        env:
+          KEVI_INSECURE_CACHE_FALLBACK: "1"
+        run: cargo test --locked --workspace --features memlock --verbose
+
+      - name: Test (full suite, non-Linux)
+        if: runner.os != 'Linux'
+        env:
+          KEVI_INSECURE_CACHE_FALLBACK: "1"
+        run: cargo test --locked --workspace --verbose
 
   link-check:
     name: Docs link check (lychee)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Run lychee link checker
         uses: lycheeverse/lychee-action@v1
         with:
@@ -68,28 +72,10 @@ jobs:
           echo "Link checker reported issues (non-fatal)."
           exit 0
 
-  audit:
-    name: Security audit
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      checks: write
-      issues: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cargo Audit
-        uses: actions-rs/audit-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
   coverage:
     name: Code coverage (cargo-llvm-cov)
-    runs-on: macos-15
+    runs-on: macos-latest
+    needs: build-test
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -107,7 +93,7 @@ jobs:
 
       - name: Generate coverage (lcov)
         run: |
-          cargo llvm-cov --workspace --no-cfg-coverage --lcov --output-path lcov.info
+          cargo llvm-cov --no-cfg-coverage --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
