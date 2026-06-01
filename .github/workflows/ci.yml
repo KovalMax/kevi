@@ -41,17 +41,17 @@ jobs:
       - name: Build
         run: cargo build --workspace --verbose
 
-      - name: Test (smoke, non-Linux)
-        if: runner.os != 'Linux'
-        env:
-          KEVI_INSECURE_CACHE_FALLBACK: "1"
-        run: cargo test -p kevi --verbose --test cli_tests --test version_tests
-
-      - name: Test (full + memlock, Linux only)
+      - name: Test (full suite + memlock, Linux)
         if: runner.os == 'Linux'
         env:
           KEVI_INSECURE_CACHE_FALLBACK: "1"
-        run: cargo test --workspace --features memlock --verbose
+        run: cargo test --locked --workspace --features memlock --verbose
+
+      - name: Test (full suite, non-Linux)
+        if: runner.os != 'Linux'
+        env:
+          KEVI_INSECURE_CACHE_FALLBACK: "1"
+        run: cargo test --locked --workspace --verbose
 
   link-check:
     name: Docs link check (lychee)
