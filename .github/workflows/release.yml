@@ -2,8 +2,7 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
 
 jobs:
   build-release:
@@ -12,109 +11,59 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, macos-latest, windows-latest ]
-
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: Verify workspace includes kevi-core
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Validate stable tag and package version
         shell: bash
         run: |
           set -euo pipefail
-          cargo metadata --format-version 1 --no-deps | grep -q '"name":"kevi-core"'
-
+          tag="${GITHUB_REF_NAME}"
+          [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          version="$(cargo metadata --format-version 1 --no-deps | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "kevi"))')"
+          [[ "$tag" == "v$version" ]]
       - name: Build (release)
         shell: bash
         run: |
           set -euo pipefail
-          # Best-effort symbol stripping via rustc codegen option
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
+          if [[ "${{ runner.os }}" == Windows ]]; then
             cargo build --release --workspace --locked
           else
             RUSTFLAGS="-C strip=symbols" cargo build --release --workspace --locked
           fi
-
-      - name: Prepare artifact
-        id: prep
+      - name: Prepare platform archive
         shell: bash
         run: |
           set -euo pipefail
-          BIN_NAME=kevi
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            BIN_PATH=target/release/${BIN_NAME}.exe
-            ARCHIVE=${BIN_NAME}-windows-${{ runner.arch }}.zip
-            7z a "$ARCHIVE" "$BIN_PATH" > /dev/null
-          elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            BIN_PATH=target/release/${BIN_NAME}
-            ARCHIVE=${BIN_NAME}-macos-${{ runner.arch }}.tar.gz
-            tar -czf "$ARCHIVE" -C target/release ${BIN_NAME}
+          if [[ "${{ runner.os }}" == Windows ]]; then
+            archive="kevi-windows-${{ runner.arch }}.zip"
+            7z a "$archive" target/release/kevi.exe >/dev/null
+          elif [[ "${{ runner.os }}" == macOS ]]; then
+            archive="kevi-macos-${{ runner.arch }}.tar.gz"
+            tar -czf "$archive" -C target/release kevi
           else
-            BIN_PATH=target/release/${BIN_NAME}
-            ARCHIVE=${BIN_NAME}-linux-${{ runner.arch }}.tar.gz
-            tar -czf "$ARCHIVE" -C target/release ${BIN_NAME}
+            archive="kevi-linux-${{ runner.arch }}.tar.gz"
+            tar -czf "$archive" -C target/release kevi
           fi
-          echo "archive=$ARCHIVE" >> $GITHUB_OUTPUT
-
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
       - name: Install CycloneDX generator
         if: runner.os == 'Linux'
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2
         with:
           tool: cargo-cyclonedx
-
-      - name: Generate SBOM (CycloneDX)
+      - name: Generate SBOM
         if: runner.os == 'Linux'
-        run: |
-          cargo cyclonedx --format json --override-filename sbom
-
-      - name: Checksums
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          
-          CHECKSUM_FILE="SHA256SUMS-${{ matrix.os }}.txt"
-          : > "$CHECKSUM_FILE"
-          for f in *.tar.gz *.zip sbom.json; do
-            if [[ -f "$f" ]]; then
-              if command -v shasum >/dev/null 2>&1; then
-                shasum -a 256 "$f" >> "$CHECKSUM_FILE"
-              else
-                sha256sum "$f" >> "$CHECKSUM_FILE"
-              fi
-            fi
-          done
-          
-          echo "checksum_file=$CHECKSUM_FILE" >> $GITHUB_OUTPUT
-
-      - name: Optional signing (minisign)
-        if: env.MINISIGN_SECRET_KEY && runner.os == 'Linux'
-        env:
-          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
-        run: |
-          set -euo pipefail
-          echo "$MINISIGN_SECRET_KEY" > minisign.key
-          for f in *.tar.gz *.zip SHA256SUMS.txt sbom.json; do
-            if [[ -f "$f" ]]; then
-              minisign -s minisign.key -Sm "$f" || true
-            fi
-          done
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        run: cargo cyclonedx --format json --override-filename sbom
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: artifacts-${{ matrix.os }}
           path: |
-            *.tar.gz
-            *.zip
+            kevi-*.tar.gz
+            kevi-*.zip
             sbom.json
-            SHA256SUMS-*.txt
+          if-no-files-found: error
 
   create-release:
     needs: build-release
@@ -122,24 +71,68 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           path: dist
           merge-multiple: true
-
-      - name: Merge Checksums
+      - name: Assemble final checksums
+        shell: bash
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
         run: |
+          set -euo pipefail
           cd dist
-          # Concatenate all OS-specific checksums into one master file
-          cat SHA256SUMS-*.txt > SHA256SUMS.txt
-          # Remove the partial files so they aren't uploaded to the release
-          rm SHA256SUMS-*.txt
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+          shopt -s nullglob
+          files=(kevi-*.tar.gz kevi-*.zip sbom.json)
+          ((${#files[@]} >= 4))
+          [[ -f sbom.json ]]
+          if [[ -n "$MINISIGN_SECRET_KEY" ]]; then
+            printf '%s\n' 'SIGNING CONFIGURED: signature asset accompanies SHA256SUMS.txt.' > RELEASE-SIGNATURE-STATUS.txt
+          else
+            printf '%s\n' 'UNSIGNED: no signing key was configured; verify SHA256SUMS.txt using a trusted distribution channel.' > RELEASE-SIGNATURE-STATUS.txt
+          fi
+          files+=(RELEASE-SIGNATURE-STATUS.txt)
+          sha256sum "${files[@]}" > SHA256SUMS.txt
+      - name: Detect configured signing key
+        id: signing-key
+        shell: bash
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          if [[ -n "$MINISIGN_SECRET_KEY" ]]; then
+            echo 'configured=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'configured=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install minisign
+        if: steps.signing-key.outputs.configured == 'true'
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2
+        with:
+          tool: minisign
+      - name: Sign final checksum manifest when configured
+        if: steps.signing-key.outputs.configured == 'true'
+        shell: bash
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          cd dist
+          if [[ -n "$MINISIGN_SECRET_KEY" ]]; then
+            keyfile="$(mktemp)"
+            trap 'rm -f "$keyfile"' EXIT
+            chmod 600 "$keyfile"
+            printf '%s' "$MINISIGN_SECRET_KEY" > "$keyfile"
+            minisign -S -s "$keyfile" -m SHA256SUMS.txt -x SHA256SUMS.txt.minisig
+            test -s SHA256SUMS.txt.minisig
+          fi
+      - name: Publish release assets
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
-            dist/*
+            dist/kevi-*.tar.gz
+            dist/kevi-*.zip
+            dist/sbom.json
+            dist/SHA256SUMS.txt*
+            dist/RELEASE-SIGNATURE-STATUS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

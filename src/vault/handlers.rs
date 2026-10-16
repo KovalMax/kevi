@@ -4,10 +4,7 @@ use crate::cryptography::generator::{
     estimate_bits_char_mode, estimate_bits_passphrase, strength_label, DefaultPasswordGenerator,
     SystemRng,
 };
-use crate::cryptography::primitives::{
-    derive_key_argon2id, header_fingerprint_excluding_nonce, parse_kevi_header, AEAD_AES256GCM,
-    KDF_ARGON2ID,
-};
+use crate::cryptography::primitives::{parse_kevi_header, AEAD_AES256GCM, KDF_ARGON2ID};
 use crate::cryptography::wordlist::WORDS;
 use crate::domain::{EntryLabel, VaultResult};
 use crate::error::KeviError;
@@ -15,15 +12,14 @@ use crate::filesystem::clipboard::{
     copy_with_ttl_using_system_clipboard, environment_warning, report_clipboard_copy_result,
     ttl_seconds,
 };
-use crate::session_management::resolver::{
-    clear_derived_key_cache_for_vault, dk_session_file_for, save_derived_key_session,
+use crate::session_management::cleanup::{
+    clear_derived_key_cache_for_vault, clear_with, CacheCleanup,
 };
 use crate::vault::models::{AddOptions, VaultData, VaultEntry};
-use crate::vault::persistence::save_vault_file;
 use crate::vault::ports::{CoreRng, GenPolicy, PasswordGenerator};
 use crate::vault::service::VaultService;
 use inquire::{Confirm, Password, Text};
-use secrecy::{ExposeSecret, SecretBox, SecretString};
+use secrecy::{ExposeSecret, SecretString};
 use serde_json::json;
 use std::env;
 use std::fmt::Display;
@@ -451,11 +447,22 @@ impl<'config> Vault<'config> {
             otps: Vec::new(),
         };
         let path_clone = target_path.clone();
-        let master_clone = master.clone();
-        spawn_blocking(move || save_vault_file(&empty, &path_clone, &master_clone))
-            .await
-            .map_err(|_| join_error("initializing vault"))?
-            .map_err(|e| vault_error("failed to initialize vault", e))?;
+        let backups = self
+            .config
+            .backups
+            .unwrap_or(crate::config::app_config::Defaults::BACKUPS);
+        spawn_blocking(move || {
+            let store = crate::filesystem::store::FileByteStore::new_with_backups(
+                path_clone.clone(),
+                backups,
+            );
+            let resolver = crate::session_management::resolver::CachedKeyResolver::new(path_clone)
+                .with_fresh_password(master);
+            VaultService::new(store, crate::vault::codec::RonCodec, resolver).save(&empty)
+        })
+        .await
+        .map_err(|_| join_error("initializing vault"))?
+        .map_err(|e| vault_error("failed to initialize vault", e))?;
         println!(
             "✅ Initialized encrypted vault at {}",
             target_path.display()
@@ -464,51 +471,18 @@ impl<'config> Vault<'config> {
     }
 
     pub async fn handle_unlock(&self, ttl_override: Option<u64>) -> VaultResult<()> {
-        // TTL precedence
-        let ttl_secs = ttl_override
-            .or_else(|| {
-                env::var("KEVI_UNLOCK_TTL")
-                    .ok()
-                    .and_then(|s| s.parse::<u64>().ok())
-            })
-            .unwrap_or(900);
-        let ttl = Duration::from_secs(ttl_secs);
-
-        // Read vault header (must exist)
+        let ttl = crate::session_management::resolver::unlock_ttl(ttl_override);
+        let ttl_secs = ttl.as_secs();
         let path: std::path::PathBuf = self.config.vault_path.clone().into();
-        let bytes = spawn_blocking(move || fs::read(&path))
+        spawn_blocking(move || crate::session_management::lifecycle::unlock(&path, ttl))
             .await
             .map_err(|_| join_error("reading vault file"))?
-            .map_err(|e| vault_error("failed to read vault file", e))?;
-        let (hdr, _off) =
-            parse_kevi_header(&bytes).map_err(|e| vault_error("invalid header", e))?;
-
-        // Get passphrase
-        let password = if let Ok(pw) = env::var("KEVI_PASSWORD") {
-            pw
+            .map_err(|error| vault_error("failed to unlock vault", error))?;
+        if ttl.is_zero() {
+            println!("🔓 Authenticated; no session created (TTL 0; existing sessions unchanged).");
         } else {
-            Password::new("Master password")
-                .without_confirmation()
-                .prompt()?
-        };
-
-        // Derive key and write dk-session bound to header
-        let key_arr = derive_key_argon2id(
-            &password,
-            &hdr.salt,
-            hdr.m_cost_kib,
-            hdr.t_cost,
-            hdr.p_lanes,
-        )
-        .map_err(|e| vault_error("failed to derive key", e))?;
-        let fp = header_fingerprint_excluding_nonce(&hdr);
-        let dk_path = dk_session_file_for(&self.config.vault_path);
-        let key_vec = SecretBox::new(Box::new(key_arr.to_vec()));
-        spawn_blocking(move || save_derived_key_session(&dk_path, &fp, &key_vec, ttl))
-            .await
-            .map_err(|_| join_error("saving derived key session"))?
-            .map_err(|e| vault_error("failed to save derived key session", e))?;
-        println!("🔓 Unlocked for {ttl_secs}s (derived key cached).");
+            println!("🔓 Unlocked for {ttl_secs}s (derived key cached).");
+        }
         Ok(())
     }
 
@@ -520,5 +494,9 @@ impl<'config> Vault<'config> {
             .map_err(|e| vault_error("failed to clear derived key session", e))?;
         println!("🔒 Locked (derived-key session cleared).");
         Ok(())
+    }
+
+    pub fn handle_lock_with(&self, cleanup: &dyn CacheCleanup) -> VaultResult<()> {
+        clear_with(self.config.vault_path.as_path(), cleanup)
     }
 }

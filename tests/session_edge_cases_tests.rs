@@ -1,130 +1,105 @@
-use kevi::api::{
-    default_params, dk_session_file_for, header_fingerprint_excluding_nonce, load,
-    save_derived_key_session, CachedKeyResolver, DerivedKeyStored, KeviHeader, KeyResolver,
-    AEAD_AES256GCM, HEADER_VERSION, KDF_ARGON2ID, NONCE_LEN,
-};
-use secrecy::{ExposeSecret, SecretBox};
-use serde::Serialize;
-use serial_test::serial;
-use std::env;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tempfile::tempdir;
-
-#[derive(Serialize)]
-struct SessionEnvelopeForTest<T> {
-    expires_at_unix: u64,
-    data: T,
-}
-
-#[derive(Serialize)]
-struct StoredSessionForTest {
-    header_fingerprint_hex: String,
-    key_b64: String,
-}
-
-fn build_header() -> KeviHeader {
-    let (m_cost_kib, t_cost, p_lanes) = default_params();
-    KeviHeader {
-        version: HEADER_VERSION,
-        kdf_id: KDF_ARGON2ID,
-        aead_id: AEAD_AES256GCM,
-        m_cost_kib,
-        t_cost,
-        p_lanes,
-        salt: [7u8; 16],
-        nonce: [0u8; NONCE_LEN],
+use kevi::api::{CacheError, Clock, DerivedKeyStored, VaultResult};
+use secrecy::SecretBox;
+use std::time::Duration;
+struct Fixed(u64);
+impl Clock for Fixed {
+    fn now(&self) -> VaultResult<u64> {
+        Ok(self.0)
     }
 }
-
-#[test]
-fn load_returns_none_for_missing_session_file() {
-    let dir = tempdir().expect("tempdir");
-    let missing = dir.path().join("missing.dksession");
-    let loaded: Option<DerivedKeyStored> = load(&missing).expect("load should succeed");
-    assert!(loaded.is_none());
+struct Failed;
+impl Clock for Failed {
+    fn now(&self) -> VaultResult<u64> {
+        Err(CacheError::Clock.into())
+    }
 }
-
-#[test]
-fn load_returns_none_and_deletes_corrupt_session_file() {
-    let dir = tempdir().expect("tempdir");
-    let session_path = dir.path().join("corrupt.dksession");
-    std::fs::write(&session_path, "not valid ron").expect("write corrupt session");
-
-    let loaded: Option<DerivedKeyStored> = load(&session_path).expect("load should succeed");
-    assert!(loaded.is_none());
-    assert!(!session_path.exists(), "corrupt session should be removed");
-}
-
-#[test]
-#[serial]
-fn cached_key_resolver_derives_when_cached_fingerprint_mismatches() {
-    let dir = tempdir().expect("tempdir");
-    let vault_path = dir.path().join("vault.ron");
-    let dk_path = dk_session_file_for(&vault_path);
-    env::set_var("KEVI_INSECURE_CACHE_FALLBACK", "1");
-    let resolver = CachedKeyResolver::new(vault_path.clone());
-    let header = build_header();
-    let fingerprint = header_fingerprint_excluding_nonce(&header);
-
-    let key = SecretBox::new(Box::new(vec![0x11; 32]));
-    save_derived_key_session(
-        &dk_path,
-        "different-fingerprint",
-        &key,
-        Duration::from_secs(60),
+fn issue() -> DerivedKeyStored {
+    DerivedKeyStored::issue(
+        "identity".into(),
+        "fingerprint".into(),
+        &SecretBox::new(Box::new(vec![42; 32])),
+        Duration::from_secs(30),
+        &Fixed(100),
     )
-    .expect("seed cached key");
-
-    env::set_var("KEVI_PASSWORD", "session-edge-pw");
-    let derived = resolver
-        .resolve_for_header(&header)
-        .expect("resolver should derive on mismatch");
-    env::remove_var("KEVI_PASSWORD");
-    env::remove_var("KEVI_INSECURE_CACHE_FALLBACK");
-
-    assert_eq!(derived.key.expose_secret().len(), 32);
-    let stored: DerivedKeyStored = load(&dk_path)
-        .expect("load rewritten session")
-        .expect("session should exist");
-    assert_eq!(stored.header_fingerprint_hex, fingerprint);
+    .unwrap()
 }
 
 #[test]
-#[serial]
-fn cached_key_resolver_derives_when_cached_base64_is_invalid() {
-    let dir = tempdir().expect("tempdir");
-    let vault_path = dir.path().join("vault.ron");
-    let dk_path = dk_session_file_for(&vault_path);
-    env::set_var("KEVI_INSECURE_CACHE_FALLBACK", "1");
-    let resolver = CachedKeyResolver::new(vault_path);
-    let header = build_header();
-    let fingerprint = header_fingerprint_excluding_nonce(&header);
-
-    let envelope = SessionEnvelopeForTest {
-        expires_at_unix: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("unix time")
-            .as_secs()
-            + 120,
-        data: StoredSessionForTest {
-            header_fingerprint_hex: fingerprint.clone(),
-            key_b64: "not-base64".to_string(),
-        },
-    };
-    let ron = ron::to_string(&envelope).expect("serialize envelope");
-    std::fs::write(&dk_path, ron).expect("write invalid b64 session");
-
-    env::set_var("KEVI_PASSWORD", "session-edge-pw");
-    let derived = resolver
-        .resolve_for_header(&header)
-        .expect("resolver should derive on invalid base64");
-    env::remove_var("KEVI_PASSWORD");
-    env::remove_var("KEVI_INSECURE_CACHE_FALLBACK");
-
-    assert_eq!(derived.key.expose_secret().len(), 32);
-    let stored: DerivedKeyStored = load(&dk_path)
-        .expect("load rewritten session")
-        .expect("session should exist");
-    assert_eq!(stored.header_fingerprint_hex, fingerprint);
-    assert_ne!(stored.key_b64, "not-base64");
+fn fixed_deadline_future_issued_and_exact_expiry_are_checked() {
+    let stored = issue();
+    for now in [100, 101, 129] {
+        assert!(stored.key("identity", "fingerprint", &Fixed(now)).is_ok());
+    }
+    for now in [99, 130, 131] {
+        assert!(stored.key("identity", "fingerprint", &Fixed(now)).is_err());
+    }
+    let mut invalid = DerivedKeyStored::decode(&stored.encode().unwrap()).unwrap();
+    invalid.expires_at_unix = 100;
+    assert!(invalid.key("identity", "fingerprint", &Fixed(100)).is_err());
+    invalid.expires_at_unix = u64::MAX;
+    assert!(invalid.key("identity", "fingerprint", &Fixed(100)).is_err());
+}
+#[test]
+fn checked_deadlines_have_no_arbitrary_ttl_cap() {
+    let key = SecretBox::new(Box::new(vec![1; 32]));
+    assert!(DerivedKeyStored::issue(
+        "i".into(),
+        "f".into(),
+        &key,
+        Duration::from_secs(1_000_000_000),
+        &Fixed(100)
+    )
+    .is_ok());
+    for (now, ttl) in [(u64::MAX, 1), (1, u64::MAX), (0, u64::MAX), (100, 0)] {
+        assert!(DerivedKeyStored::issue(
+            "i".into(),
+            "f".into(),
+            &key,
+            Duration::from_secs(ttl),
+            &Fixed(now)
+        )
+        .is_err());
+    }
+    assert!(issue().key("identity", "fingerprint", &Failed).is_err());
+    assert!(DerivedKeyStored::issue(
+        "i".into(),
+        "f".into(),
+        &key,
+        Duration::from_secs(30),
+        &Failed
+    )
+    .is_err());
+}
+#[test]
+fn bounded_schema_rejects_legacy_unknown_and_oversized_payloads() {
+    for bytes in [
+        br#"{"header_fingerprint_hex":"f","key_b64":"abc"}"#.as_slice(),
+        b"not-json",
+        b"{}",
+    ] {
+        assert!(DerivedKeyStored::decode(bytes).is_err());
+    }
+    assert!(DerivedKeyStored::decode(&vec![b' '; 4097]).is_err());
+    let mut stored = issue();
+    stored.schema = 2;
+    assert!(stored.key("identity", "fingerprint", &Fixed(100)).is_err());
+    stored.identity = "x".repeat(4096);
+    assert!(stored.encode().is_err());
+}
+#[test]
+fn key_lengths_are_exact_and_debug_never_discloses_encoded_key() {
+    for length in [0, 8, 31, 33, 1024] {
+        assert!(DerivedKeyStored::issue(
+            "i".into(),
+            "f".into(),
+            &SecretBox::new(Box::new(vec![1; length])),
+            Duration::from_secs(30),
+            &Fixed(100)
+        )
+        .is_err());
+    }
+    let stored = issue();
+    let debug = format!("{stored:?}");
+    assert!(debug.contains("REDACTED"));
+    assert!(!debug.contains(&stored.key_b64));
 }

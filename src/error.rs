@@ -8,6 +8,7 @@ use tokio::task::JoinError;
 
 use crate::config::app_config::ConfigError;
 use crate::cryptography::primitives::HeaderError;
+use crate::cryptography::primitives::KdfPolicyError;
 
 pub type AppResult<T> = Result<T, KeviError>;
 pub type OtpResult<T> = Result<T, OtpError>;
@@ -63,6 +64,10 @@ pub enum TuiError {
 
 #[derive(Debug, Error)]
 pub enum KeviError {
+    #[error("Cache error: {0}")]
+    Cache(#[from] CacheError),
+    #[error("partial cache cleanup failure: {0:?}")]
+    CacheCleanup(Vec<CacheError>),
     #[error("{0}")]
     Config(#[from] ConfigError),
     #[error("Vault error: {0}")]
@@ -71,6 +76,8 @@ pub enum KeviError {
     Otp(#[from] OtpError),
     #[error("Cryptography error: {0}")]
     Crypto(String),
+    #[error("KDF policy rejected vault parameters: {0}")]
+    KdfPolicy(#[from] KdfPolicyError),
     #[error("I/O error: {0}")]
     Io(String),
     #[error("TUI error: {0}")]
@@ -83,6 +90,30 @@ pub enum KeviError {
     Generator(String),
     #[error("Common error: {0}")]
     Common(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum CacheError {
+    #[error("cache TTL must be a whole number of seconds")]
+    InvalidTtl,
+    #[error("protected or ambiguous file cleanup target")]
+    CleanupConflict,
+    #[error("entry missing")]
+    Missing,
+    #[error("access denied")]
+    Denied,
+    #[error("store unavailable")]
+    Unavailable,
+    #[error("malformed or invalid session")]
+    Malformed,
+    #[error("deletion failed")]
+    Delete,
+    #[error("clock or deadline unavailable")]
+    Clock,
+    #[error("identity resolution failed")]
+    Identity,
+    #[error("persistence failed")]
+    Persist,
 }
 
 impl KeviError {

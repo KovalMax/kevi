@@ -51,7 +51,35 @@ where
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyOrigin {
+    Fresh,
+    Cached,
+}
+
+pub struct AcquiredKey {
+    pub derived: DerivedKey,
+    pub origin: KeyOrigin,
+}
+
 pub trait KeyResolver: Send + Sync {
+    fn acquire_for_header(&self, header: &KeviHeader) -> VaultResult<AcquiredKey> {
+        Ok(AcquiredKey {
+            derived: self.resolve_for_header(header)?,
+            origin: KeyOrigin::Fresh,
+        })
+    }
+    fn acquire_for_new_vault(
+        &self,
+        params: HeaderParams,
+        salt: [u8; 16],
+    ) -> VaultResult<AcquiredKey> {
+        Ok(AcquiredKey {
+            derived: self.resolve_for_new_vault(params, salt)?,
+            origin: KeyOrigin::Fresh,
+        })
+    }
+    fn publish(&self, _header: &KeviHeader, _acquired: &AcquiredKey) {}
     // Resolve a derived key for an existing header (bound to its params/salt)
     fn resolve_for_header(&self, hdr: &KeviHeader) -> VaultResult<DerivedKey>;
     // Resolve for new vault parameters (default params + fresh salt)
@@ -63,6 +91,19 @@ pub trait KeyResolver: Send + Sync {
 }
 
 impl<T: KeyResolver + ?Sized> KeyResolver for Arc<T> {
+    fn acquire_for_header(&self, header: &KeviHeader) -> VaultResult<AcquiredKey> {
+        (**self).acquire_for_header(header)
+    }
+    fn acquire_for_new_vault(
+        &self,
+        params: HeaderParams,
+        salt: [u8; 16],
+    ) -> VaultResult<AcquiredKey> {
+        (**self).acquire_for_new_vault(params, salt)
+    }
+    fn publish(&self, header: &KeviHeader, acquired: &AcquiredKey) {
+        (**self).publish(header, acquired);
+    }
     fn resolve_for_header(&self, hdr: &KeviHeader) -> VaultResult<DerivedKey> {
         (**self).resolve_for_header(hdr)
     }

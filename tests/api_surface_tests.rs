@@ -50,6 +50,10 @@ fn api_exports_cover_main_entry_points() {
     let (_cfg_path, _cfg_file) = load_file_config_with_path();
     let _default_data = VaultData::default();
     let _stored = DerivedKeyStored {
+        schema: 1,
+        identity: "dummy".into(),
+        issued_at_unix: 100,
+        expires_at_unix: 130,
         header_fingerprint_hex: "abc".to_string(),
         key_b64: "def".to_string(),
     };

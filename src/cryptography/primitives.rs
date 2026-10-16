@@ -7,6 +7,7 @@ use ring::{
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+use zeroize::Zeroizing;
 
 pub const KEY_LEN: usize = 32; // 256-bit key
 pub const NONCE_LEN: usize = 12; // 96-bit GCM nonce
@@ -26,6 +27,39 @@ pub const HEADER_MAGIC: &[u8; 4] = b"KEVI";
 pub const HEADER_VERSION: u16 = 1;
 pub const KDF_ARGON2ID: u8 = 2;
 pub const AEAD_AES256GCM: u8 = 1;
+pub const MAX_KDF_MEMORY_KIB: u32 = 131_072;
+pub const MAX_KDF_ITERATIONS: u32 = 5;
+pub const MAX_KDF_LANES: u32 = 2;
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+#[error("Argon2 parameters outside supported policy: memory={m_cost_kib} KiB, iterations={t_cost}, lanes={p_lanes}")]
+pub struct KdfPolicyError {
+    pub m_cost_kib: u32,
+    pub t_cost: u32,
+    pub p_lanes: u32,
+}
+
+pub fn validate_kdf_params(
+    m_cost_kib: u32,
+    t_cost: u32,
+    p_lanes: u32,
+) -> Result<(), KdfPolicyError> {
+    let min_memory = p_lanes.checked_mul(8);
+    if m_cost_kib > MAX_KDF_MEMORY_KIB
+        || t_cost == 0
+        || t_cost > MAX_KDF_ITERATIONS
+        || p_lanes == 0
+        || p_lanes > MAX_KDF_LANES
+        || min_memory.is_none_or(|minimum| m_cost_kib < minimum)
+    {
+        return Err(KdfPolicyError {
+            m_cost_kib,
+            t_cost,
+            p_lanes,
+        });
+    }
+    Ok(())
+}
 
 pub fn default_params() -> (u32, u32, u32) {
     // Sensible 2025 defaults for CLI: 64 MiB, 3 iterations, 1 lane
@@ -39,6 +73,7 @@ pub fn derive_key_argon2id(
     t_cost: u32,
     p: u32,
 ) -> VaultResult<[u8; KEY_LEN]> {
+    validate_kdf_params(m_cost_kib, t_cost, p).map_err(KeviError::KdfPolicy)?;
     let params = Params::new(m_cost_kib, t_cost, p, Some(KEY_LEN))
         .map_err(|e| KeviError::crypto(format!("invalid Argon2 params: {e}")))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
@@ -93,6 +128,8 @@ pub enum HeaderError {
     UnsupportedKdf(u8),
     #[error("unsupported aead id: {0}")]
     UnsupportedAead(u8),
+    #[error("invalid Argon2 parameters: {0}")]
+    InvalidKdfParams(#[from] KdfPolicyError),
 }
 
 pub fn parse_kevi_header(data: &[u8]) -> Result<(KeviHeader, usize), HeaderError> {
@@ -123,6 +160,7 @@ pub fn parse_kevi_header(data: &[u8]) -> Result<(KeviHeader, usize), HeaderError
     let m_cost_kib = u32::from_le_bytes(data[m_cost_off..m_cost_off + 4].try_into().unwrap());
     let t_cost = u32::from_le_bytes(data[t_cost_off..t_cost_off + 4].try_into().unwrap());
     let p_lanes = u32::from_le_bytes(data[p_off..p_off + 4].try_into().unwrap());
+    validate_kdf_params(m_cost_kib, t_cost, p_lanes).map_err(HeaderError::InvalidKdfParams)?;
     let mut salt = [0u8; SALT_LEN];
     salt.copy_from_slice(&data[salt_off..salt_off + SALT_LEN]);
     let mut nonce = [0u8; NONCE_LEN];
@@ -169,9 +207,14 @@ pub fn encrypt_vault(data: &[u8], password: &str) -> VaultResult<Vec<u8>> {
 
 pub fn decrypt_vault(data: &[u8], password: &str) -> VaultResult<Vec<u8>> {
     // Parse header then delegate to key-based decrypt
-    let (hdr, _ct_offset) =
-        parse_kevi_header(data).map_err(|e| KeviError::crypto(format!("invalid header: {e}")))?;
-    let key = derive_key_argon2id(password, &hdr.salt, hdr.m_cost_kib, hdr.t_cost, hdr.p_lanes)?;
+    let (hdr, _ct_offset) = parse_kevi_header(data)?;
+    let key = Zeroizing::new(derive_key_argon2id(
+        password,
+        &hdr.salt,
+        hdr.m_cost_kib,
+        hdr.t_cost,
+        hdr.p_lanes,
+    )?);
     decrypt_vault_with_key(data, &key)
 }
 
@@ -184,6 +227,7 @@ pub fn encrypt_vault_with_key(
     salt: [u8; SALT_LEN],
     derived_key: &[u8; KEY_LEN],
 ) -> VaultResult<Vec<u8>> {
+    validate_kdf_params(m_cost_kib, t_cost, p_lanes)?;
     let rng = SystemRandom::new();
     let mut nonce_bytes = [0u8; NONCE_LEN];
     rng.fill(&mut nonce_bytes)

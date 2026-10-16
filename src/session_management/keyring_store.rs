@@ -1,64 +1,75 @@
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-use crate::session_management::resolver::{DerivedKeySessionStore, DerivedKeyStored};
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-use crate::{domain::VaultResult, error::KeviError};
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-use keyring_core::Entry;
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-use sha2::{Digest, Sha256};
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-use std::path::Path;
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-use std::time::Duration;
+use crate::{
+    domain::VaultResult,
+    error::CacheError,
+    session_management::resolver::{DerivedKeySessionStore, DerivedKeyStored},
+};
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub struct LinuxWindowsKeyringSessionStore {
-    service: String,
     account: String,
 }
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-impl LinuxWindowsKeyringSessionStore {
-    pub fn new(vault_path: &Path) -> VaultResult<Self> {
-        let mut hasher = Sha256::new();
-        hasher.update(vault_path.to_string_lossy().as_bytes());
-        let account = hex::encode(hasher.finalize());
-
-        Ok(Self {
-            service: "kevi.dk".to_string(),
-            account,
-        })
+fn classify(error: keyring_core::Error) -> CacheError {
+    match error {
+        keyring_core::Error::NoEntry => CacheError::Missing,
+        keyring_core::Error::NoStorageAccess(_) => CacheError::Denied,
+        keyring_core::Error::BadEncoding(_)
+        | keyring_core::Error::BadDataFormat(_, _)
+        | keyring_core::Error::BadStoreFormat(_) => CacheError::Malformed,
+        _ => CacheError::Unavailable,
     }
+}
 
-    fn entry(&self) -> VaultResult<Entry> {
-        Entry::new(self.service.as_str(), self.account.as_str())
-            .map_err(|error| KeviError::vault(error.to_string()))
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+impl LinuxWindowsKeyringSessionStore {
+    pub fn for_account(account: &str) -> Self {
+        Self {
+            account: account.into(),
+        }
+    }
+    fn entry(&self) -> VaultResult<keyring_core::Entry> {
+        static INITIALIZED: std::sync::OnceLock<Result<(), CacheError>> =
+            std::sync::OnceLock::new();
+        let result = INITIALIZED.get_or_init(|| {
+            #[cfg(target_os = "linux")]
+            let result = keyring::use_named_store("secret-service");
+            #[cfg(target_os = "windows")]
+            let result = keyring::use_named_store("windows");
+            result.map_err(classify)
+        });
+        (*result)?;
+        keyring_core::Entry::new("kevi.dk", &self.account).map_err(|error| classify(error).into())
     }
 }
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 impl DerivedKeySessionStore for LinuxWindowsKeyringSessionStore {
     fn load_cached(&self) -> VaultResult<Option<DerivedKeyStored>> {
-        let entry = self.entry()?;
-        match entry.get_password() {
-            Ok(value) => Ok(serde_json::from_str::<DerivedKeyStored>(&value).ok()),
-            Err(_) => Ok(None),
+        match self.entry()?.get_password() {
+            Ok(value) => DerivedKeyStored::decode(value.as_bytes()).map(Some),
+            Err(error) => match classify(error) {
+                CacheError::Missing => Ok(None),
+                kind => Err(kind.into()),
+            },
         }
     }
-
-    fn save_cached(&self, stored: &DerivedKeyStored, _ttl: Duration) -> VaultResult<()> {
-        let entry = self.entry()?;
-        let payload =
-            serde_json::to_string(stored).map_err(|error| KeviError::vault(error.to_string()))?;
-        entry
-            .set_password(payload.as_str())
-            .map_err(|error| KeviError::vault(error.to_string()))?;
-        Ok(())
+    fn save_cached(&self, stored: &DerivedKeyStored, _ttl: std::time::Duration) -> VaultResult<()> {
+        let payload = stored.encode()?;
+        let text = std::str::from_utf8(&payload).map_err(|_| CacheError::Malformed)?;
+        self.entry()?
+            .set_password(text)
+            .map_err(|error| classify(error).into())
     }
-
     fn clear_cached(&self) -> VaultResult<()> {
-        let entry = self.entry()?;
-        let _ = entry.delete_credential();
-        Ok(())
+        match self.entry()?.delete_credential() {
+            Ok(()) => Ok(()),
+            Err(error) => match classify(error) {
+                CacheError::Missing => Ok(()),
+                CacheError::Denied => Err(CacheError::Denied.into()),
+                _ => Err(CacheError::Delete.into()),
+            },
+        }
     }
 }
