@@ -104,8 +104,7 @@ fn symlinks_and_non_utf8_paths_have_lossless_consistent_identity() {
 }
 
 #[test]
-#[cfg(not(target_os = "macos"))]
-fn cleanup_attempts_all_targets_after_native_errors_and_missing_only_succeeds() {
+fn cleanup_attempts_current_targets_after_native_errors_and_missing_only_succeeds() {
     let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     let current = dk_session_file_for(&vault).unwrap();
@@ -123,10 +122,13 @@ fn cleanup_attempts_all_targets_after_native_errors_and_missing_only_succeeds() 
         };
         let error = clear_with(&vault, &cleanup).unwrap_err();
         assert!(error.to_string().contains("partial cache cleanup failure"));
+        #[cfg(all(unix, not(target_os = "macos")))]
         assert!(!current.exists());
-        assert!(!legacy.exists());
+        #[cfg(any(target_os = "macos", windows))]
+        assert!(current.exists(), "unsupported file cleanup fails closed");
+        assert!(legacy.exists(), "legacy cache files are left untouched");
         let native = cleanup.native.lock().unwrap();
-        assert!(native.len() >= 2);
+        assert_eq!(native.len(), 1, "only the current native account is used");
         assert_eq!(
             native.len(),
             native
@@ -134,8 +136,16 @@ fn cleanup_attempts_all_targets_after_native_errors_and_missing_only_succeeds() 
                 .collect::<std::collections::BTreeSet<_>>()
                 .len()
         );
-        assert!(cleanup.files.lock().unwrap().contains(&current));
+        #[cfg(all(unix, not(target_os = "macos")))]
+        assert_eq!(
+            *cleanup.files.lock().unwrap(),
+            vec![current.clone()],
+            "only the current file path is passed to cleanup"
+        );
+        #[cfg(any(target_os = "macos", windows))]
+        assert!(cleanup.files.lock().unwrap().is_empty());
     }
+    std::fs::remove_file(&current).unwrap();
     clear_with(
         &vault,
         &Cleanup {
@@ -147,7 +157,6 @@ fn cleanup_attempts_all_targets_after_native_errors_and_missing_only_succeeds() 
 }
 
 #[test]
-#[cfg(not(target_os = "macos"))]
 fn file_failure_does_not_stop_other_deletions_or_native_cleanup() {
     let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
@@ -157,18 +166,22 @@ fn file_failure_does_not_stop_other_deletions_or_native_cleanup() {
     std::fs::write(&legacy, session_bytes()).unwrap();
     let cleanup = Cleanup::default();
     assert!(clear_with(&vault, &cleanup).is_err());
-    assert!(!legacy.exists());
-    assert!(!cleanup.native.lock().unwrap().is_empty());
+    assert!(
+        legacy.exists(),
+        "legacy cache files are not cleanup targets"
+    );
+    assert_eq!(cleanup.native.lock().unwrap().len(), 1);
+    assert!(cleanup.files.lock().unwrap().is_empty());
 }
 
 #[test]
 #[cfg(unix)]
-fn cleanup_preserves_selected_dksession_vault_and_symlink_alias_vault() {
+fn cleanup_ignores_dksession_named_vault_and_symlink_alias() {
     let dir = cleanup_test_dir();
     let vault = dir.path().join("actual.dksession");
     std::fs::write(&vault, b"KEVI encrypted vault fixture").unwrap();
     let cleanup = Cleanup::default();
-    assert!(clear_with(&vault, &cleanup).is_err());
+    assert!(clear_with(&vault, &cleanup).is_ok());
     assert_eq!(
         std::fs::read(&vault).unwrap(),
         b"KEVI encrypted vault fixture"
@@ -177,7 +190,7 @@ fn cleanup_preserves_selected_dksession_vault_and_symlink_alias_vault() {
     let alias = dir.path().join("alias.ron");
     std::os::unix::fs::symlink(&vault, &alias).unwrap();
     let alias_cleanup = Cleanup::default();
-    assert!(clear_with(&alias, &alias_cleanup).is_err());
+    assert!(clear_with(&alias, &alias_cleanup).is_ok());
     assert_eq!(
         std::fs::read(&vault).unwrap(),
         b"KEVI encrypted vault fixture"
@@ -185,7 +198,7 @@ fn cleanup_preserves_selected_dksession_vault_and_symlink_alias_vault() {
 }
 
 #[test]
-fn cleanup_preserves_another_encrypted_vault_at_the_legacy_cache_name() {
+fn cleanup_ignores_unrelated_vault_with_historical_extension() {
     let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     std::fs::write(&vault, b"selected vault").unwrap();
@@ -193,7 +206,9 @@ fn cleanup_preserves_another_encrypted_vault_at_the_legacy_cache_name() {
     std::fs::write(&other_vault, b"KEVI another encrypted vault").unwrap();
     let cleanup = Cleanup::default();
 
-    assert!(clear_with(&vault, &cleanup).is_err());
+    assert!(clear_with(&vault, &cleanup).is_ok());
+    assert_eq!(cleanup.native.lock().unwrap().len(), 1);
+    assert_eq!(cleanup.files.lock().unwrap().len(), 1);
     assert_eq!(
         std::fs::read(&other_vault).unwrap(),
         b"KEVI another encrypted vault"
@@ -201,32 +216,39 @@ fn cleanup_preserves_another_encrypted_vault_at_the_legacy_cache_name() {
 }
 
 #[test]
-#[cfg(not(target_os = "macos"))]
-fn cleanup_removes_a_recognizable_legacy_session_file() {
+fn cleanup_ignores_legacy_cache_file_on_every_platform() {
     let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     let legacy = vault.with_extension("dksession");
     std::fs::write(&legacy, session_bytes()).unwrap();
 
-    clear_with(&vault, &Cleanup::default()).unwrap();
-    assert!(!legacy.exists());
+    let cleanup = Cleanup::default();
+    clear_with(&vault, &cleanup).unwrap();
+    assert_eq!(std::fs::read(&legacy).unwrap(), session_bytes());
+    assert_eq!(
+        *cleanup.native.lock().unwrap(),
+        vec![path_identity(&vault).unwrap()]
+    );
+    assert_eq!(
+        *cleanup.files.lock().unwrap(),
+        vec![dk_session_file_for(&vault).unwrap()]
+    );
 }
 
 #[test]
-fn cleanup_rejects_generic_ron_with_expiry_and_arbitrary_data() {
+fn cleanup_ignores_generic_ron_at_historical_path() {
     let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     let legacy = vault.with_extension("dksession");
     let unrelated = b"(expires_at_unix: 200, data: \"not a cache\")";
     std::fs::write(&legacy, unrelated).unwrap();
 
-    #[cfg(not(target_os = "macos"))]
-    assert!(clear_with(&vault, &Cleanup::default()).is_err());
+    clear_with(&vault, &Cleanup::default()).unwrap();
     assert_eq!(std::fs::read(&legacy).unwrap(), unrelated);
 }
 
 #[test]
-fn bounded_lock_cleanup_preserves_bare_key_shaped_ron() {
+fn cleanup_ignores_bare_key_shaped_ron_at_historical_path() {
     let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     let legacy = vault.with_extension("dksession");
@@ -237,13 +259,12 @@ fn bounded_lock_cleanup_preserves_bare_key_shaped_ron() {
     );
     std::fs::write(&legacy, &unrelated).unwrap();
 
-    #[cfg(not(target_os = "macos"))]
-    assert!(clear_with(&vault, &Cleanup::default()).is_err());
+    clear_with(&vault, &Cleanup::default()).unwrap();
     assert_eq!(std::fs::read(legacy).unwrap(), unrelated.as_bytes());
 }
 
 #[test]
-fn cleanup_recognizes_exact_supported_ron_legacy_session() {
+fn cleanup_ignores_exact_legacy_ron_session() {
     let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     let legacy = vault.with_extension("dksession");
@@ -252,26 +273,42 @@ fn cleanup_recognizes_exact_supported_ron_legacy_session() {
         "ab".repeat(32),
         "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
     );
-    std::fs::write(&legacy, payload).unwrap();
+    std::fs::write(&legacy, &payload).unwrap();
 
-    #[cfg(not(target_os = "macos"))]
-    {
-        clear_with(&vault, &Cleanup::default()).unwrap();
-        assert!(!legacy.exists());
-    }
+    let cleanup = Cleanup::default();
+    clear_with(&vault, &cleanup).unwrap();
+    assert_eq!(std::fs::read(&legacy).unwrap(), payload.as_bytes());
+    assert_eq!(
+        *cleanup.native.lock().unwrap(),
+        vec![path_identity(&vault).unwrap()]
+    );
+    assert_eq!(
+        *cleanup.files.lock().unwrap(),
+        vec![dk_session_file_for(&vault).unwrap()]
+    );
 }
 
 #[test]
-#[cfg(not(target_os = "macos"))]
 fn cleanup_removes_current_file_cache_in_a_protected_directory() {
     let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     let current = dk_session_file_for(&vault).unwrap();
     std::fs::write(&current, session_bytes()).unwrap();
 
-    clear_with(&vault, &Cleanup::default()).unwrap();
-
-    assert!(!current.exists());
+    let result = clear_with(&vault, &Cleanup::default());
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        result.unwrap();
+        assert!(!current.exists());
+    }
+    #[cfg(any(target_os = "macos", windows))]
+    {
+        assert!(result.is_err());
+        assert!(
+            current.exists(),
+            "file cleanup fails closed on this platform"
+        );
+    }
 }
 
 #[test]
@@ -296,7 +333,7 @@ fn cleanup_preserves_file_sessions_in_externally_mutable_directory_but_attempts_
     let error = clear_with(&alias, &cleanup).unwrap_err();
 
     assert!(error.to_string().contains("partial cache cleanup failure"));
-    assert!(legacy.exists(), "unsafe legacy artifact must be preserved");
+    assert!(legacy.exists(), "legacy artifacts are not cleanup targets");
     #[cfg(not(target_os = "macos"))]
     assert!(
         !current.exists(),
@@ -304,44 +341,43 @@ fn cleanup_preserves_file_sessions_in_externally_mutable_directory_but_attempts_
     );
     #[cfg(target_os = "macos")]
     assert!(current.exists(), "macOS ACL status is not verifiable");
-    #[cfg(not(target_os = "macos"))]
     assert!(!cleanup.files.lock().unwrap().contains(&legacy));
-    #[cfg(target_os = "macos")]
-    assert!(!cleanup.files.lock().unwrap().contains(&legacy));
-    assert!(!cleanup.native.lock().unwrap().is_empty());
+    assert_eq!(cleanup.native.lock().unwrap().len(), 1);
 }
 
 #[test]
 #[cfg(windows)]
-fn windows_cleanup_preserves_candidate_when_file_identity_is_unavailable() {
+fn windows_cleanup_fails_closed_for_current_file_and_ignores_legacy_file() {
     let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     let legacy = vault.with_extension("dksession");
+    let current = dk_session_file_for(&vault).unwrap();
+    std::fs::write(&current, session_bytes()).unwrap();
     std::fs::write(&legacy, session_bytes()).unwrap();
 
-    assert!(clear_with(&vault, &Cleanup::default()).is_err());
+    let cleanup = Cleanup::default();
+    assert!(clear_with(&vault, &cleanup).is_err());
+    assert_eq!(std::fs::read(&current).unwrap(), session_bytes());
     assert_eq!(std::fs::read(&legacy).unwrap(), session_bytes());
+    assert!(cleanup.files.lock().unwrap().is_empty());
+    assert_eq!(cleanup.native.lock().unwrap().len(), 1);
 }
 
 #[test]
 #[cfg(all(unix, not(target_os = "macos")))]
-fn identity_resolution_failure_still_attempts_supplied_legacy_targets() {
+fn identity_resolution_failure_does_not_fall_back_to_legacy_targets() {
     let dir = tempdir().unwrap();
     let loop_path = dir.path().join("loop");
     std::os::unix::fs::symlink(&loop_path, &loop_path).unwrap();
     let cleanup = Cleanup::default();
     assert!(clear_with(&loop_path, &cleanup).is_err());
-    assert!(!cleanup.native.lock().unwrap().is_empty());
-    assert!(cleanup
-        .files
-        .lock()
-        .unwrap()
-        .contains(&loop_path.with_extension("dksession")));
+    assert!(cleanup.native.lock().unwrap().is_empty());
+    assert!(cleanup.files.lock().unwrap().is_empty());
 }
 
 #[test]
 #[cfg(target_os = "macos")]
-fn macos_file_cleanup_fails_closed_for_current_and_legacy_names() {
+fn macos_file_cleanup_fails_closed_for_current_and_ignores_legacy_name() {
     let dir = tempdir().unwrap();
     let vault = dir.path().join("vault.ron");
     let current = dk_session_file_for(&vault).unwrap();
@@ -356,7 +392,7 @@ fn macos_file_cleanup_fails_closed_for_current_and_legacy_names() {
     assert!(current.exists());
     assert!(legacy.exists());
     assert!(cleanup.files.lock().unwrap().is_empty());
-    assert!(!cleanup.native.lock().unwrap().is_empty());
+    assert_eq!(cleanup.native.lock().unwrap().len(), 1);
 }
 
 #[test]
@@ -380,5 +416,5 @@ fn provider_diagnostics_are_sanitized_and_other_targets_continue() {
     let error = clear_with(&dir.path().join("vault"), &cleanup).unwrap_err();
     assert!(!error.to_string().contains("sensitive-provider-diagnostic"));
     assert!(matches!(error, KeviError::CacheCleanup(_)));
-    assert!(*cleanup.files.lock().unwrap() >= 2);
+    assert_eq!(*cleanup.files.lock().unwrap(), 1);
 }

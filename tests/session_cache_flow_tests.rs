@@ -3,6 +3,12 @@ use kevi::api::{dk_session_file_for, save_vault_file, VaultData, VaultEntry};
 use secrecy::SecretString;
 use tempfile::tempdir;
 
+#[cfg(target_os = "linux")]
+fn cache_flow_test_dir() -> tempfile::TempDir {
+    let home = std::env::var_os("HOME").expect("CI provides a protected home directory");
+    tempfile::tempdir_in(home).expect("create fixture below protected home")
+}
+
 fn seed_vault(path: &std::path::Path, master_password: &str, label: &str, secret: &str) {
     let data = VaultData {
         entries: vec![VaultEntry {
@@ -19,7 +25,7 @@ fn seed_vault(path: &std::path::Path, master_password: &str, label: &str, secret
 #[test]
 #[cfg(all(unix, not(target_os = "macos")))]
 fn unlock_then_get_uses_cached_key_and_lock_clears_it() {
-    let td = tempdir().expect("tempdir");
+    let td = cache_flow_test_dir();
     let path = td.path().join("vault.ron");
     seed_vault(&path, "pw", "github", "s3cr3t");
 

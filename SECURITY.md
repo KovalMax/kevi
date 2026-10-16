@@ -190,9 +190,11 @@ All current backends use the same versioned envelope: losslessly encoded canonic
 absolute-path identity, header fingerprint, issue/expiry timestamps and an exact
 32-byte derived key. Encoded payloads are bounded to 4096 bytes. Unknown schemas,
 old expiryless payloads, invalid timestamps, future issue times, fingerprint/path
-mismatches and malformed/short/oversized keys are rejected. Reauthenticate to
-migrate: secure mode does not import file keys. Reads do not eagerly delete stale
-entries, avoiding deletion races with newly published sessions.
+mismatches and malformed/short/oversized keys are rejected. Legacy or expiryless
+cache entries are not read, imported, migrated, or automatically removed; they may
+remain on disk or in a native store. Reauthenticate to create a current-format
+entry. Reads do not eagerly delete stale current entries, avoiding deletion races
+with newly published sessions.
 
 Existing symlinks resolve to a common identity. New files use a path-identity
 namespace rather than replacing the vault extension. Missing-path cleanup resolves
@@ -212,43 +214,42 @@ time guarantee is provided. Cached keys remain sensitive regardless of timestamp
 
 ### Lock and verification limits
 
-`lock` attempts all bounded applicable current-native, current-file and known
-legacy native-account/file targets, regardless of backend selection. It removes
-only recognizable session payloads. Legacy RON removal requires the exact
-supported envelope (`expires_at_unix` with nested `data` containing only the
-fingerprint and encoded key); bare key-shaped objects and records with unknown
-fields are ambiguous and preserved. Every file target, current and legacy,
-requires Unix directory metadata to establish that the canonical parent and each
-ancestor is owned by the effective user or root and has no group- or
-other-write permission bits. Otherwise the file is preserved, cleanup is
-reported as a sanitized partial failure, and remaining targets are still
-attempted. File cleanup fails closed on macOS because ACL grants are not reliably
-evaluated, and on platforms where directory safety cannot be verified
-(including Windows). The selected vault, aliases to that vault,
-encrypted vaults at legacy cache names, and other ambiguous files are preserved
-and reported as cleanup conflicts. Missing entries succeed; resolution, provider
-and deletion failures are sanitized, aggregated and return nonzero after
+`lock` attempts only the current native account and current-format file target,
+regardless of backend selection. It does not inspect, read, import, migrate, or
+delete legacy native accounts or historical file names. Existing legacy entries
+may remain and do not cause current-lock failure. Current file cleanup removes
+only a valid current envelope. Every current file target requires Unix directory
+metadata to establish that the canonical parent and each ancestor is owned by the
+effective user or root and has no group- or other-write permission bits. Otherwise
+the file is preserved, cleanup is reported as a sanitized partial failure, and
+remaining current targets are still attempted. File cleanup fails closed on
+macOS because ACL grants are not reliably evaluated, and on platforms where
+identity or directory safety cannot be verified (including Windows). The selected
+vault, aliases to that vault, and ambiguous current files are preserved and
+reported as cleanup conflicts. Missing current entries succeed; resolution,
+provider and deletion failures are sanitized, aggregated and return nonzero after
 attempting the remainder. No broad store search or secret import is performed.
 
 On macOS, the explicit insecure file-cache backend is unsupported: it will not
-read or persist key files, and lock will preserve current and legacy file
-targets while still attempting other cleanup targets.
+read or persist key files, and lock will preserve a present current file target
+while still attempting current native cleanup. Legacy file names are not
+inspected or targeted on any platform.
 
 The guarantee is **quiescent only**: it excludes overlapping cache writes,
-including operations begun before lock which may publish afterward. The legacy
-directory check is a path-based permission/ownership assessment, not a
-handle-bound delete; same-user concurrent filesystem mutation can replace a path
+including operations begun before lock which may publish afterward. Current-file
+directory checks are path-based permission/ownership assessments, not
+handle-bound deletes; same-user concurrent filesystem mutation can replace a path
 after inspection and remains outside the guarantee. Do not interpret a path
 recheck as closing that race. Lock does not revoke already acquired in-memory
-keys or prevent later writes. Unknown historical identities, renames and hard
-links require separate user-managed cleanup.
+keys or prevent later writes. Legacy or otherwise unknown historical identities,
+renames and hard links are not discovered or automatically cleaned.
 
-The public `kevi::api::clear` session-file helper is guarded cache cleanup, not a
-generic serialized-session delete. It accepts bounded RON session envelopes only
-in the supported expiry/data/key schema and recognized derived-key session
-payloads; generic `save<T>` output, arbitrary files, bare key-shaped objects,
-encrypted vaults, symlinks and ambiguous content are preserved with a typed
-cleanup error. Missing paths are a no-op. The generic `save<T>` and `load<T>`
+The public `kevi::api::clear` session-file helper is guarded current-cache cleanup,
+not a generic serialized-session delete. It accepts only recognized current-format
+derived-key payloads; legacy RON envelopes, generic `save<T>` output, arbitrary
+files, bare key-shaped objects, encrypted vaults, symlinks and ambiguous content
+are preserved with a typed cleanup error when at a current target. Historical
+legacy file names are not inspected. Missing paths are a no-op. The generic `save<T>` and `load<T>`
 APIs retain their signatures, but fail with `CacheError::Unavailable` on macOS
 and non-Unix platforms (including Windows), without reading or writing a path,
 because safe generic file-session storage is not established there. Zero TTL is

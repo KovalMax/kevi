@@ -94,9 +94,9 @@ pub fn load<T: DeserializeOwned>(path: &Path) -> VaultResult<Option<T>> {
     }
 }
 
-/// Remove a file only when it is a recognized cache payload and its directory
-/// passes the guarded cleanup checks. Generic or ambiguous serialized data is
-/// preserved and reported as a cleanup conflict; a missing path is a no-op.
+/// Remove a current-format cache file only when its directory passes the guarded
+/// cleanup checks. Legacy, generic, or ambiguous serialized data is preserved
+/// and reported as a cleanup conflict; a missing path is a no-op.
 pub fn clear(path: &Path) -> VaultResult<()> {
-    crate::session_management::cleanup_file::clear_recognizable_session_file(path)
+    crate::session_management::cleanup_file::clear_recognizable_current_session_file(path)
 }

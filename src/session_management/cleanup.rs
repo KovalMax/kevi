@@ -45,43 +45,29 @@ pub fn clear_with(path: &Path, cleanup: &dyn CacheCleanup) -> VaultResult<()> {
         }
         Err(error) => record(Err(error)),
     }
-    let mut accounts = BTreeSet::new();
-    let mut files = BTreeSet::new();
-    match identity::path_identity(path) {
-        Ok(identity) => {
-            accounts.insert(identity);
-        }
-        Err(error) => record(Err(error)),
-    }
-    match identity::file_for_identity(path) {
-        Ok(file) => {
-            files.insert(file);
-        }
-        Err(error) => record(Err(error)),
-    }
     let protected_spellings = spellings
         .iter()
         .map(|spelling| spelling.as_path())
         .collect::<Vec<_>>();
-    for spelling in &spellings {
-        accounts.insert(identity::legacy_account(spelling));
-        files.insert(spelling.with_extension("dksession"));
+    match identity::path_identity(path) {
+        Ok(identity) => record(cleanup.native(&identity)),
+        Err(error) => record(Err(error)),
     }
-    for account in accounts {
-        record(cleanup.native(&account));
-    }
-    for file in files {
-        let safety = crate::session_management::cleanup_file::check_file_directory(&file);
-        record(
-            safety
-                .and_then(|()| {
-                    crate::session_management::cleanup_file::check_target(
-                        &protected_spellings,
-                        &file,
-                    )
-                })
-                .and_then(|()| cleanup.file(&file)),
-        );
+    match identity::file_for_identity(path) {
+        Ok(file) => {
+            let safety = crate::session_management::cleanup_file::check_file_directory(&file);
+            record(
+                safety
+                    .and_then(|()| {
+                        crate::session_management::cleanup_file::check_target(
+                            &protected_spellings,
+                            &file,
+                        )
+                    })
+                    .and_then(|()| cleanup.file(&file)),
+            );
+        }
+        Err(error) => record(Err(error)),
     }
     if failures.is_empty() {
         Ok(())

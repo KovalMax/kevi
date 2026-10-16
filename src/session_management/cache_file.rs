@@ -80,5 +80,5 @@ pub fn write(path: &Path, bytes: &[u8]) -> VaultResult<()> {
 }
 
 pub fn clear(path: &Path) -> VaultResult<()> {
-    crate::session_management::cleanup_file::clear_recognizable_session_file(path)
+    crate::session_management::cleanup_file::clear_recognizable_current_session_file(path)
 }

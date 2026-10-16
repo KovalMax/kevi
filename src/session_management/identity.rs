@@ -58,7 +58,3 @@ pub fn file_for_identity(path: &Path) -> VaultResult<PathBuf> {
         .ok_or(CacheError::Identity)?
         .join(format!(".kevi-{}.dksession-v1", path_identity(path)?)))
 }
-
-pub fn legacy_account(path: &Path) -> String {
-    hex::encode(Sha256::digest(path.to_string_lossy().as_bytes()))
-}

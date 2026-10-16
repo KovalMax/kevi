@@ -2,32 +2,10 @@ use crate::domain::VaultResult;
 use crate::error::CacheError;
 use crate::session_management::envelope::{DerivedKeyStored, MAX_PAYLOAD_BYTES};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use serde::Deserialize;
 use std::fs::{self, Metadata};
 use std::io::Read;
 use std::path::Path;
-use zeroize::{Zeroize, Zeroizing};
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LegacyKey {
-    header_fingerprint_hex: String,
-    key_b64: String,
-}
-
-impl Drop for LegacyKey {
-    fn drop(&mut self) {
-        self.key_b64.zeroize();
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LegacyEnvelope {
-    #[serde(rename = "expires_at_unix")]
-    _expires_at_unix: u64,
-    data: LegacyKey,
-}
+use zeroize::Zeroizing;
 
 fn recognizable_key(fingerprint: &str, encoded: &str) -> bool {
     fingerprint.len() == 64
@@ -39,14 +17,9 @@ fn recognizable_key(fingerprint: &str, encoded: &str) -> bool {
             .is_ok_and(|key| key.len() == 32)
 }
 
-fn recognizable_session(bytes: &[u8]) -> bool {
-    if let Ok(stored) = DerivedKeyStored::decode(bytes) {
-        return recognizable_key(&stored.header_fingerprint_hex, &stored.key_b64);
-    }
-    let legacy = ron::de::from_bytes::<LegacyEnvelope>(bytes)
-        .ok()
-        .map(|envelope| envelope.data);
-    legacy.is_some_and(|key| recognizable_key(&key.header_fingerprint_hex, &key.key_b64))
+fn recognizable_current_session(bytes: &[u8]) -> bool {
+    DerivedKeyStored::decode(bytes)
+        .is_ok_and(|stored| recognizable_key(&stored.header_fingerprint_hex, &stored.key_b64))
 }
 
 fn same_object(first: &Metadata, second: &Metadata) -> VaultResult<bool> {
@@ -96,7 +69,7 @@ pub fn check_target(vault_spellings: &[&Path], candidate: &Path) -> VaultResult<
         .map_err(|_| CacheError::Unavailable)?;
     if bytes.len() > MAX_PAYLOAD_BYTES
         || bytes.starts_with(b"KEVI")
-        || !recognizable_session(&bytes)
+        || !recognizable_current_session(&bytes)
     {
         return Err(CacheError::CleanupConflict.into());
     }
@@ -149,7 +122,7 @@ pub fn check_file_directory(candidate: &Path) -> VaultResult<()> {
     }
 }
 
-pub fn clear_recognizable_session_file(candidate: &Path) -> VaultResult<()> {
+pub fn clear_recognizable_current_session_file(candidate: &Path) -> VaultResult<()> {
     check_file_directory(candidate)?;
     check_target(&[], candidate)?;
     match fs::remove_file(candidate) {
