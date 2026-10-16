@@ -57,18 +57,10 @@ fn same_object(first: &Metadata, second: &Metadata) -> VaultResult<bool> {
     }
     #[cfg(windows)]
     {
-        use std::os::windows::fs::MetadataExt;
-        match (
-            first.volume_serial_number(),
-            first.file_index(),
-            second.volume_serial_number(),
-            second.file_index(),
-        ) {
-            (Some(first_volume), Some(first_index), Some(second_volume), Some(second_index)) => {
-                Ok(first_volume == second_volume && first_index == second_index)
-            }
-            _ => Err(CacheError::Identity.into()),
-        }
+        // Stable Rust does not expose a supported Windows file identity API.
+        // Never authorize deletion using a weaker path/name comparison.
+        let _ = (first, second);
+        Err(CacheError::Identity.into())
     }
     #[cfg(not(any(unix, windows)))]
     {

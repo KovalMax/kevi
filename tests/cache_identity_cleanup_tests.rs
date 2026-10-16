@@ -3,6 +3,18 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tempfile::tempdir;
 
+fn cleanup_test_dir() -> tempfile::TempDir {
+    #[cfg(target_os = "linux")]
+    {
+        let home = std::env::var_os("HOME").expect("CI provides a protected home directory");
+        tempfile::tempdir_in(home).expect("create fixture below protected home")
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        tempdir().unwrap()
+    }
+}
+
 fn session_bytes() -> Vec<u8> {
     DerivedKeyStored {
         schema: 1,
@@ -43,7 +55,7 @@ impl CacheCleanup for Cleanup {
 
 #[test]
 fn new_namespace_does_not_collide_by_extension_and_resolves_missing_ancestors() {
-    let dir = tempdir().unwrap();
+    let dir = cleanup_test_dir();
     let first = dir.path().join("vault.ron");
     let second = dir.path().join("vault.bin");
     assert_ne!(
@@ -64,7 +76,7 @@ fn new_namespace_does_not_collide_by_extension_and_resolves_missing_ancestors() 
 #[cfg(unix)]
 fn symlinks_and_non_utf8_paths_have_lossless_consistent_identity() {
     use std::os::unix::ffi::OsStringExt;
-    let dir = tempdir().unwrap();
+    let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     std::fs::write(&vault, b"dummy").unwrap();
     let alias = dir.path().join("alias");
@@ -94,7 +106,7 @@ fn symlinks_and_non_utf8_paths_have_lossless_consistent_identity() {
 #[test]
 #[cfg(not(target_os = "macos"))]
 fn cleanup_attempts_all_targets_after_native_errors_and_missing_only_succeeds() {
-    let dir = tempdir().unwrap();
+    let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     let current = dk_session_file_for(&vault).unwrap();
     let legacy = vault.with_extension("dksession");
@@ -137,7 +149,7 @@ fn cleanup_attempts_all_targets_after_native_errors_and_missing_only_succeeds() 
 #[test]
 #[cfg(not(target_os = "macos"))]
 fn file_failure_does_not_stop_other_deletions_or_native_cleanup() {
-    let dir = tempdir().unwrap();
+    let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     let current = dk_session_file_for(&vault).unwrap();
     std::fs::create_dir(&current).unwrap();
@@ -152,7 +164,7 @@ fn file_failure_does_not_stop_other_deletions_or_native_cleanup() {
 #[test]
 #[cfg(unix)]
 fn cleanup_preserves_selected_dksession_vault_and_symlink_alias_vault() {
-    let dir = tempdir().unwrap();
+    let dir = cleanup_test_dir();
     let vault = dir.path().join("actual.dksession");
     std::fs::write(&vault, b"KEVI encrypted vault fixture").unwrap();
     let cleanup = Cleanup::default();
@@ -174,7 +186,7 @@ fn cleanup_preserves_selected_dksession_vault_and_symlink_alias_vault() {
 
 #[test]
 fn cleanup_preserves_another_encrypted_vault_at_the_legacy_cache_name() {
-    let dir = tempdir().unwrap();
+    let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     std::fs::write(&vault, b"selected vault").unwrap();
     let other_vault = vault.with_extension("dksession");
@@ -191,7 +203,7 @@ fn cleanup_preserves_another_encrypted_vault_at_the_legacy_cache_name() {
 #[test]
 #[cfg(not(target_os = "macos"))]
 fn cleanup_removes_a_recognizable_legacy_session_file() {
-    let dir = tempdir().unwrap();
+    let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     let legacy = vault.with_extension("dksession");
     std::fs::write(&legacy, session_bytes()).unwrap();
@@ -202,7 +214,7 @@ fn cleanup_removes_a_recognizable_legacy_session_file() {
 
 #[test]
 fn cleanup_rejects_generic_ron_with_expiry_and_arbitrary_data() {
-    let dir = tempdir().unwrap();
+    let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     let legacy = vault.with_extension("dksession");
     let unrelated = b"(expires_at_unix: 200, data: \"not a cache\")";
@@ -215,7 +227,7 @@ fn cleanup_rejects_generic_ron_with_expiry_and_arbitrary_data() {
 
 #[test]
 fn bounded_lock_cleanup_preserves_bare_key_shaped_ron() {
-    let dir = tempdir().unwrap();
+    let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     let legacy = vault.with_extension("dksession");
     let unrelated = format!(
@@ -232,7 +244,7 @@ fn bounded_lock_cleanup_preserves_bare_key_shaped_ron() {
 
 #[test]
 fn cleanup_recognizes_exact_supported_ron_legacy_session() {
-    let dir = tempdir().unwrap();
+    let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     let legacy = vault.with_extension("dksession");
     let payload = format!(
@@ -252,7 +264,7 @@ fn cleanup_recognizes_exact_supported_ron_legacy_session() {
 #[test]
 #[cfg(not(target_os = "macos"))]
 fn cleanup_removes_current_file_cache_in_a_protected_directory() {
-    let dir = tempdir().unwrap();
+    let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     let current = dk_session_file_for(&vault).unwrap();
     std::fs::write(&current, session_bytes()).unwrap();
@@ -267,7 +279,7 @@ fn cleanup_removes_current_file_cache_in_a_protected_directory() {
 fn cleanup_preserves_file_sessions_in_externally_mutable_directory_but_attempts_other_targets() {
     use std::os::unix::fs::PermissionsExt;
 
-    let dir = tempdir().unwrap();
+    let dir = cleanup_test_dir();
     let vault = dir.path().join("vault.ron");
     std::fs::write(&vault, b"dummy vault").unwrap();
     let unsafe_dir = dir.path().join("externally-mutable");
@@ -297,6 +309,18 @@ fn cleanup_preserves_file_sessions_in_externally_mutable_directory_but_attempts_
     #[cfg(target_os = "macos")]
     assert!(!cleanup.files.lock().unwrap().contains(&legacy));
     assert!(!cleanup.native.lock().unwrap().is_empty());
+}
+
+#[test]
+#[cfg(windows)]
+fn windows_cleanup_preserves_candidate_when_file_identity_is_unavailable() {
+    let dir = cleanup_test_dir();
+    let vault = dir.path().join("vault.ron");
+    let legacy = vault.with_extension("dksession");
+    std::fs::write(&legacy, session_bytes()).unwrap();
+
+    assert!(clear_with(&vault, &Cleanup::default()).is_err());
+    assert_eq!(std::fs::read(&legacy).unwrap(), session_bytes());
 }
 
 #[test]

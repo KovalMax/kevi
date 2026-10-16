@@ -61,3 +61,18 @@ fn release_workflow_validates_stable_exact_tag_and_merges_before_signing() {
     assert!(workflow.contains("chmod 600 \"$keyfile\""));
     assert!(workflow.contains("trap 'rm -f \"$keyfile\"' EXIT"));
 }
+
+#[test]
+fn dependency_audit_is_blocking_and_does_not_publish_with_a_github_token() {
+    let workflow = include_str!("../.github/workflows/audit.yml");
+
+    assert!(workflow.contains("pull_request:\n    paths:"));
+    assert!(workflow.contains("- '.github/workflows/audit.yml'"));
+    assert!(workflow.contains("permissions:\n  contents: read"));
+    assert!(!workflow.contains("contents: write"));
+    assert!(!workflow.contains("permissions: write-all"));
+    assert!(workflow.contains("cargo install cargo-audit --version 0.22.0 --locked"));
+    assert!(workflow.contains("cargo audit\n"));
+    assert!(!workflow.contains("rustsec/audit-check"));
+    assert!(!workflow.contains("secrets.GITHUB_TOKEN"));
+}

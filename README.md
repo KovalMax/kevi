@@ -289,7 +289,7 @@ This repository includes a GitHub Actions workflow that runs:
 * `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 * `cargo build --workspace`
 * `KEVI_INSECURE_CACHE_FALLBACK=1 cargo test --workspace` (with and without `memlock` on Linux)
-* `cargo audit` (via a dedicated job)
+* `cargo audit` (via a dedicated job; findings block in the job log without requiring write access to publish a Check API result)
 * `cargo llvm-cov` for coverage reporting
 
 You can mirror these steps locally before pushing changes.
