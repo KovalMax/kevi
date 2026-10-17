@@ -42,6 +42,7 @@ pub struct App {
     pub filter: String,
     toast: Option<String>,
     toast_ticks: u16,
+    cache_warning: Option<crate::session_management::resolver::CacheWarning>,
     pub view: View,
     // Form state (Add/Edit)
     pub form_field: FormField,
@@ -55,6 +56,21 @@ pub struct App {
 }
 
 impl App {
+    pub fn show_cache_warning(
+        &mut self,
+        warnings: &crate::session_management::warnings::CacheWarnings,
+    ) {
+        if self.cache_warning.is_none() {
+            self.cache_warning = warnings.pop();
+        }
+    }
+    pub fn cache_warning_message(&self) -> Option<String> {
+        self.cache_warning
+            .map(|warning| format!("{warning} | F2=dismiss cache warning"))
+    }
+    pub fn acknowledge_cache_warning(&mut self) {
+        self.cache_warning = None;
+    }
     pub fn new(entries: Vec<VaultEntry>) -> Self {
         let mut app = Self {
             entries,
@@ -64,6 +80,7 @@ impl App {
             filter: String::new(),
             toast: None,
             toast_ticks: 0,
+            cache_warning: None,
             view: View::List,
             form_field: FormField::Label,
             form_label: String::new(),
@@ -288,6 +305,10 @@ impl App {
         CodecType: VaultCodec + 'static,
         ResolverType: KeyResolver + 'static,
     {
+        if code == KeyCode::F(2) {
+            self.acknowledge_cache_warning();
+            return Ok(());
+        }
         match self.view {
             View::List => match self.mode {
                 Mode::Normal => match code {
@@ -450,7 +471,7 @@ impl App {
                                         svc.add_entry(entry_real)
                                     })
                                     .await
-                                    .map_err(crate::error::TuiError::from)?;
+                                    .map_err(TuiError::from)?;
                                 } else {
                                     let _ = spawn_blocking(move || {
                                         let mut vault = svc.load()?;
@@ -471,7 +492,7 @@ impl App {
                                         }
                                     })
                                     .await
-                                    .map_err(crate::error::TuiError::from)?;
+                                    .map_err(TuiError::from)?;
                                 }
                                 // Reload entries
                                 let svc_reload = service.clone();
@@ -508,7 +529,7 @@ impl App {
                             let svc_reload = service.clone();
                             if let Ok(Ok(ents)) = spawn_blocking(move || svc_reload.load())
                                 .await
-                                .map_err(crate::error::TuiError::from)
+                                .map_err(TuiError::from)
                             {
                                 self.replace_entries(ents.entries);
                             }

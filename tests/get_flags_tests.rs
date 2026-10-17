@@ -38,6 +38,7 @@ fn get_echo_password_and_no_copy_prints_secret() {
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("HOME", home)
         .env("KEVI_PASSWORD", "pw")
+        .env("KEVI_INSECURE_CACHE_FALLBACK", "1")
         .arg("get")
         .arg("label1")
         .arg("--path")
@@ -58,6 +59,7 @@ fn get_echo_user_and_no_copy_prints_username() {
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("HOME", home)
         .env("KEVI_PASSWORD", "pw")
+        .env("KEVI_INSECURE_CACHE_FALLBACK", "1")
         .arg("get")
         .arg("label1")
         .arg("--path")
@@ -80,6 +82,7 @@ fn get_echo_notes_and_no_copy_prints_notes() {
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("HOME", home)
         .env("KEVI_PASSWORD", "pw")
+        .env("KEVI_INSECURE_CACHE_FALLBACK", "1")
         .arg("get")
         .arg("label1")
         .arg("--path")
@@ -102,6 +105,7 @@ fn get_no_copy_without_echo_prints_nothing() {
     let mut cmd = Command::cargo_bin("kevi").unwrap();
     cmd.env("HOME", home)
         .env("KEVI_PASSWORD", "pw")
+        .env("KEVI_INSECURE_CACHE_FALLBACK", "1")
         .arg("get")
         .arg("label1")
         .arg("--path")

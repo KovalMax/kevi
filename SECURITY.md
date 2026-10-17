@@ -7,6 +7,25 @@ and how to use it safely in practice.
 It is aimed at technically minded users who want to understand what
 Kevi does - and does not - protect against.
 
+Kevi currently supports Linux and macOS. Other operating systems are not
+supported, even where some platform-independent code may compile.
+
+## Security status at a glance
+
+- Vaults use Argon2id and AES-256-GCM. Accepted KDF parameters are bounded by
+  policy; the limits are detailed below.
+- The derived-key cache uses the platform's native secure store by default. The
+  explicit Linux file fallback is unencrypted and should be treated as a secret.
+- Kevi has **not had a formal independent security audit**. Automated tests and
+  CI do not prove native Keychain/Secret Service behavior; disposable native-store
+  verification has not been run.
+- GitHub private vulnerability reporting is currently disabled. Do not post
+  exploit details in a public issue; maintainers need to publish or enable a
+  private reporting route.
+- Release signatures are only independently verifiable with a trusted minisign
+  public key. The project does not currently publish one, so signatures alone do
+  not establish release authenticity for users.
+
 
 Threat model
 ------------
@@ -53,11 +72,27 @@ Kevi derives an encryption key from your master password using the
 * Version: `0x13` (`argon2::Version::V0x13`)
 * Output key length: 32 bytes (256 bits)
 
-Default parameters (as of 2025) are defined in `default_params()`:
+The current default parameters are defined in `default_params()`:
 
 * Memory cost: `64 * 1024` KiB = **64 MiB**
 * Time cost: `3` iterations
 * Parallelism: `1` lane
+
+Vault headers are accepted only within the following supported policy:
+memory at most 131072 KiB (128 MiB), iterations at most 5, and lanes at
+most 2. All parameters must be positive and satisfy Argon2's minimum
+memory requirement of eight KiB per lane. The policy is checked while
+parsing the header and again at the KDF boundary, before derived-key cache
+lookup or KDF work. Values are rejected, never clamped. A vault exceeding
+these limits cannot be opened by this version; preserve a backup and
+contact support for a separately designed recovery/migration path. Do not
+overwrite the only copy of such a vault.
+
+The selected maximum tuple (128 MiB, 5 iterations, 2 lanes) completed three
+synthetic serial Linux/arm64 container runs at a median 0.305294 seconds
+and reported 137100 kB process peak RSS. This was on one Apple Silicon host,
+with one CPU and a 256 MiB memory+swap cgroup limit. It is not evidence for
+slower devices, concurrency, or historical vault compatibility.
 
 These values are chosen as a conservative baseline for an interactive
 CLI tool on modern hardware. You can think of them as:
@@ -66,8 +101,9 @@ CLI tool on modern hardware. You can think of them as:
 * Still fast enough that unlocking the vault is tolerable on a typical
   developer workstation.
 
-Argon2id is resistant to GPU and ASIC optimization and combines
-benefits of Argon2i and Argon2d.
+Argon2id is a memory-hard function designed to increase the cost of password
+guessing, including highly parallel attacks. It does not prevent GPU/ASIC
+attacks. It combines data-independent and data-dependent processing phases.
 
 ### Vault encryption - AES-256-GCM
 
@@ -104,6 +140,12 @@ process:
 3. Use the header as AAD and the stored nonce as the AEAD nonce.
 4. Decrypt the ciphertext and verify the authentication tag.
 
+For direct `decrypt_vault` calls, the returned fixed-size derived-key array is
+immediately placed in `zeroize::Zeroizing` and remains zeroizing-owned through
+the decryption call, including error exits. This limits exposure of that owned
+array; it does not guarantee erasure of KDF/compiler temporaries, Argon2 or AEAD
+internal copies, or copies outside this function.
+
 Any change to the header, nonce, or ciphertext will cause decryption
 to fail.
 
@@ -130,41 +172,143 @@ To avoid repeatedly typing your master password, Kevi supports
 short-lived **derived-key sessions** managed by commands like
 `unlock` and `lock`.
 
-### Session files
+### Storage and authentication
 
-The flow is roughly:
+Cache writes default to macOS Security Framework or explicitly selected Linux
+Secret Service. There is no
+automatic insecure, sample-store or keyutils fallback. `KEVI_PASSWORD`,
+`RUST_TEST_THREADS` and the obsolete `KEVI_PREFER_SECURE_CACHE` do not downgrade
+storage. Only `KEVI_INSECURE_CACHE_FALLBACK=1` or case-insensitive `true` selects
+the insecure file adapter, with a warning. An encoded key file is not encrypted:
+anyone obtaining its key bytes can decrypt matching vault ciphertext, even after
+the application's expiry deadline. Keep it out of backups and shared directories.
 
-1. When you run `kevi unlock`, Kevi:
-   * Derives a key from your password and the vault header.
-   * Computes the header fingerprint (excluding nonce).
-   * Wraps the derived key in a `SecretBox` (from the `secrecy`
-     crate) to help avoid accidental leaks.
-   * Serializes this and writes it to a **session file** with a TTL.
-2. When you run another command (e.g. `get`), Kevi first tries to read
-   the session file and verify:
-   * the TTL has not expired,
-   * the fingerprint matches the current vault header.
-   If everything checks out, the cached derived key is used without
-   prompting for the master password.
-3. `kevi lock` deletes the session file, forcing the next operation to
-   prompt for your password again.
+File writes on Unix use an unpredictable, exclusively created temporary in the
+destination directory, mode `0600` from creation, checked permissions/write/sync/
+replacement, and cleanup on failure. They do not reuse the vault's older generic
+write helper. File mode is available only on Unix platforms other than macOS.
+macOS ACLs can grant directory mutation despite restrictive POSIX mode bits, and
+this application does not reliably inspect those ACLs; explicit file-cache
+selection is therefore rejected there. Other non-Unix platforms also fail closed.
+This is not a vault-wide filesystem rewrite or a physical-erasure
+guarantee.
 
-Tests (see `tests/session_tests.rs`) verify that:
+Acquisition and publication are separate. Existing loads authenticate and decode
+before publishing a fresh key. Existing saves authenticate/decode the original
+ciphertext before replacement and publish only after a successful write. Creation
+uses the same lifecycle and publishes after the final vault identity exists.
+Explicit `unlock` always derives afresh and authenticates the same bytes whose
+header supplies the fingerprint, even when another valid session exists. Wrong
+passwords or failed writes do not replace a prior session. Explicit persistence
+failure returns nonzero; ordinary authenticated operations may succeed uncached
+with a sanitized typed warning. CLI/OTP warnings go to stderr; the TUI uses a
+bounded, typed visible queue, including startup and runtime failures.
 
-* Session files are only accepted when not expired.
-* The fingerprint is checked and mismatches cause the cache to be
-  ignored.
-* File permissions on Unix are restrictive (no world-readable
-  sessions).
+### Envelope, identity and expiry
 
-### Security considerations for sessions
+All current backends use the same versioned envelope: losslessly encoded canonical
+absolute-path identity, header fingerprint, issue/expiry timestamps and an exact
+32-byte derived key. Encoded payloads are bounded to 4096 bytes. Unknown schemas,
+old expiryless payloads, invalid timestamps, future issue times, fingerprint/path
+mismatches and malformed/short/oversized keys are rejected. Legacy or expiryless
+cache entries are not read, imported, migrated, or automatically removed; they may
+remain on disk or in a native store. Reauthenticate to create a current-format
+entry. Reads do not eagerly delete stale current entries, avoiding deletion races
+with newly published sessions.
 
-* A session file contains material that can be used to decrypt your
-  vault without the master password while it is valid.
-* Protect your home directory and temporary directories accordingly.
-* Keep session TTLs short on shared or less trusted machines.
-* Use `kevi lock` when stepping away from your desk or switching
-  users.
+Existing symlinks resolve to a common identity. New files use a path-identity
+namespace rather than replacing the vault extension. Missing-path cleanup resolves
+the nearest existing ancestor and remaining components where possible. Hard-link
+aliases, unknown historical paths and renames are not generally discoverable.
+
+TTL precedence is unlock flag, `KEVI_UNLOCK_TTL`, then 900 seconds; invalid
+environment values retain the default. The deadline is fixed at persistence:
+cache hits never renew it. Checked arithmetic rejects unrepresentable deadlines,
+without an arbitrary maximum TTL. Entries are expired at the exact expiry
+boundary. TTL zero bypasses reads and writes for that invocation and leaves
+previous sessions untouched; `--once` likewise performs no cache I/O or refresh.
+
+Expiry is a reuse check, not a scheduled purge or physical erasure. It relies on
+wall time: rollback can lengthen effective lifetime. No cross-process monotonic
+time guarantee is provided. Cached keys remain sensitive regardless of timestamps.
+
+### Lock and verification limits
+
+`lock` attempts only the current native account and current-format file target,
+regardless of backend selection. It does not inspect, read, import, migrate, or
+delete legacy native accounts or historical file names. Existing legacy entries
+may remain and do not cause current-lock failure. Current file cleanup removes
+only a valid current envelope. Every current file target requires Unix directory
+metadata to establish that the canonical parent and each ancestor is owned by the
+effective user or root and has no group- or other-write permission bits. Otherwise
+the file is preserved, cleanup is reported as a sanitized partial failure, and
+remaining current targets are still attempted. File cleanup fails closed on
+macOS because ACL grants are not reliably evaluated, and on platforms where
+identity or directory safety cannot be verified. The selected
+vault, aliases to that vault, and ambiguous current files are preserved and
+reported as cleanup conflicts. Missing current entries succeed; resolution,
+provider and deletion failures are sanitized, aggregated and return nonzero after
+attempting the remainder. No broad store search or secret import is performed.
+
+On macOS, the explicit insecure file-cache backend is unsupported: it will not
+read or persist key files, and lock will preserve a present current file target
+while still attempting current native cleanup. Legacy file names are not
+inspected or targeted on any platform.
+
+The guarantee is **quiescent only**: it excludes overlapping cache writes,
+including operations begun before lock which may publish afterward. Current-file
+directory checks are path-based permission/ownership assessments, not
+handle-bound deletes; same-user concurrent filesystem mutation can replace a path
+after inspection and remains outside the guarantee. Do not interpret a path
+recheck as closing that race. Lock does not revoke already acquired in-memory
+keys or prevent later writes. Legacy or otherwise unknown historical identities,
+renames and hard links are not discovered or automatically cleaned.
+
+The public `kevi::api::clear` session-file helper is guarded current-cache cleanup,
+not a generic serialized-session delete. It accepts only recognized current-format
+derived-key payloads; legacy RON envelopes, generic `save<T>` output, arbitrary
+files, bare key-shaped objects, encrypted vaults, symlinks and ambiguous content
+are preserved with a typed cleanup error when at a current target. Historical
+legacy file names are not inspected. Missing paths are a no-op. The generic `save<T>` and `load<T>`
+APIs retain their signatures, but fail with `CacheError::Unavailable` on macOS
+and non-Unix platforms, without reading or writing a path,
+because safe generic file-session storage is not established there. Zero TTL is
+still a no-I/O success on every platform. Nonzero fractional-second TTLs are
+rejected as `CacheError::InvalidTtl` before platform availability checks, so a
+persisted deadline is never silently shortened. On supported
+Unix platforms excluding macOS, the generic APIs use file persistence, but their
+serialized content is not implicitly eligible for guarded deletion.
+On macOS and other platforms where directory safety cannot be established,
+existing files fail closed. This API's path-based checks share the same
+same-user-concurrent-mutation limitation described above.
+
+Regression coverage uses injected clocks, fake faults, temporary Unix file stores,
+and CLI/service/TUI contracts. These are not proof of native secure-store behavior.
+Disposable-store macOS and Linux verification has **not been run** and
+is required before a platform-readiness claim. Production lock contacts native
+stores even with file opt-in; deterministic tests inject cleanup adapters instead.
+Existing full-workspace clipboard tests require a disposable clipboard as well.
+
+Untrusted vault headers above the enforced per-call maxima are rejected before
+Argon2 work. Repeated requests and concurrent calls can still consume resources
+up to the per-call policy; no aggregate concurrency/resource bound is promised.
+Historical vaults above the supported limits are not guaranteed to remain
+accessible. Comprehensive memory hardening and vault-wide filesystem hardening
+are outside this change.
+
+### Release artifact verification
+
+Linux and macOS release archives and the Linux SBOM are covered by the final
+`SHA256SUMS.txt`.
+When configured, signing that exact final manifest is required to succeed and
+produces `SHA256SUMS.txt.minisig`; absent signing configuration is explicitly
+marked unsigned. A valid signature only establishes authenticity when verified
+against a minisign public key obtained independently from a trusted channel.
+No trusted public key is currently supplied by this project; arranging that
+distribution is a prerequisite for consumers to rely on signed releases.
+Verification requires `minisign` when a signature is present and a SHA-256
+checksum tool. The documented `sha256sum` command is common on Linux; macOS users
+may need GNU coreutils or an equivalent verifier.
 
 
 Memory safety and secret handling
@@ -183,6 +327,19 @@ store sensitive values like passwords in memory:
 
 Where appropriate, the `zeroize` crate is used by dependencies to
 clear memory when secrets are dropped.
+
+After Argon2id returns a derived-key array, Kevi immediately places that array
+in zeroizing ownership, then copies it once into the long-lived secret type.
+The temporary derivation array is zeroized when that owner drops, including
+when secret allocation or construction unwinds. This does not make a claim
+about copies internal to the KDF or memory already copied by the allocator.
+
+The file-cache reader owns serialized payload bytes in a zeroizing buffer from
+allocation through decode, including malformed and oversized-read paths. The
+decoded envelope's encoded key string and the decoded key buffer are also
+zeroized. This does not establish that serializer/parser internals or payload
+buffers returned by native-store adapters are wiped; caller-owned input bytes
+are outside the file-reader guarantee.
 
 ### memlock (optional)
 
@@ -317,9 +474,11 @@ cryptography and secure systems design.
 Security disclosures
 --------------------
 
-If you believe you found a security issue, please report it privately
-to the maintainers instead of opening a public issue with exploit
-details.
+If you believe you found a security issue, do not open a public issue with
+exploit details. GitHub private vulnerability reporting is currently disabled,
+and no dedicated private contact address is documented. The project currently
+does not provide a documented private reporting route; maintainers should enable
+GitHub private vulnerability reporting or publish one.
 
 Include, when possible:
 
@@ -327,5 +486,5 @@ Include, when possible:
 * Reproduction steps or proof of concept.
 * Impact assessment and any suggested mitigations.
 
-We will triage reports as quickly as possible and coordinate disclosure
-timing for confirmed vulnerabilities.
+Once a private reporting route is available, maintainers should coordinate
+triage and disclosure timing for confirmed vulnerabilities with the reporter.

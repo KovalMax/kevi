@@ -1,64 +1,102 @@
 use crate::domain::VaultResult;
+#[cfg(all(unix, not(target_os = "macos")))]
 use crate::error::KeviError;
-use crate::filesystem::secure::{atomic_write_secure, ensure_parent_secure};
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+#[cfg(all(unix, not(target_os = "macos")))]
+use serde::Deserialize;
+use serde::Serialize;
+#[cfg(all(unix, not(target_os = "macos")))]
 use std::fs;
 use std::path::Path;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
+#[cfg(all(unix, not(target_os = "macos")))]
+use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
+#[cfg(all(unix, not(target_os = "macos")))]
 struct SessionEnvelope<T> {
     expires_at_unix: u64,
     data: T,
 }
 
-fn now_unix() -> u64 {
+#[cfg(all(unix, not(target_os = "macos")))]
+fn now_unix() -> VaultResult<u64> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap_or(Duration::from_secs(0))
-        .as_secs()
+        .map(|time| time.as_secs())
+        .map_err(|_| crate::error::CacheError::Clock.into())
 }
 
+/// Persist a generic expiring session envelope on supported Unix platforms.
+///
+/// Fractional-second TTLs are rejected with `CacheError::InvalidTtl` rather
+/// than silently shortened. A zero TTL is a no-op on every platform. Returns
+/// `CacheError::Unavailable` for nonzero whole-second TTLs on macOS and
+/// non-Unix platforms, where safe generic file persistence cannot be
+/// established.
 pub fn save<T: Serialize>(path: &Path, data: &T, ttl: Duration) -> VaultResult<()> {
-    let envelope = SessionEnvelope {
-        expires_at_unix: now_unix().saturating_add(ttl.as_secs()),
-        data,
-    };
-    let ron = ron::to_string(&envelope).map_err(|e| KeviError::common(e.to_string()))?;
-    ensure_parent_secure(path).map_err(|e| KeviError::io(e.to_string()))?;
-    atomic_write_secure(path, ron.as_bytes()).map_err(|e| KeviError::io(e.to_string()))?;
-    Ok(())
+    if ttl.is_zero() {
+        return Ok(());
+    }
+    if ttl.subsec_nanos() != 0 {
+        return Err(crate::error::CacheError::InvalidTtl.into());
+    }
+    #[cfg(any(not(unix), target_os = "macos"))]
+    {
+        let _ = (path, data, ttl);
+        Err(crate::error::CacheError::Unavailable.into())
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let envelope = SessionEnvelope {
+            expires_at_unix: now_unix()?
+                .checked_add(ttl.as_secs())
+                .ok_or(crate::error::CacheError::Clock)?,
+            data,
+        };
+        let ron = ron::to_string(&envelope).map_err(|e| KeviError::common(e.to_string()))?;
+        crate::session_management::cache_file::write(path, ron.as_bytes())?;
+        Ok(())
+    }
 }
 
+/// Load a generic expiring session envelope on supported Unix platforms.
+///
+/// Returns `CacheError::Unavailable` on macOS and non-Unix platforms without
+/// inspecting the path, including when it does not exist.
 pub fn load<T: DeserializeOwned>(path: &Path) -> VaultResult<Option<T>> {
-    if !path.exists() {
-        return Ok(None);
+    #[cfg(any(not(unix), target_os = "macos"))]
+    {
+        let _ = path;
+        Err(crate::error::CacheError::Unavailable.into())
     }
-    let bytes =
-        fs::read(path).map_err(|e| KeviError::io(format!("Failed to read session file: {e}")))?;
-    let content = String::from_utf8_lossy(&bytes);
-
-    let envelope: SessionEnvelope<T> = match ron::from_str(&content) {
-        Ok(v) => v,
-        Err(_) => {
-            // Corrupt or invalid format; clear it
-            let _ = fs::remove_file(path);
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        if !path.exists() {
             return Ok(None);
         }
-    };
+        let bytes = fs::read(path)
+            .map_err(|e| KeviError::io(format!("Failed to read session file: {e}")))?;
+        let content = String::from_utf8_lossy(&bytes);
 
-    if now_unix() >= envelope.expires_at_unix {
-        let _ = fs::remove_file(path);
-        return Ok(None);
+        let envelope: SessionEnvelope<T> = match ron::from_str(&content) {
+            Ok(v) => v,
+            Err(_) => {
+                return Ok(None);
+            }
+        };
+
+        if now_unix()? >= envelope.expires_at_unix {
+            return Ok(None);
+        }
+
+        Ok(Some(envelope.data))
     }
-
-    Ok(Some(envelope.data))
 }
 
+/// Remove a current-format cache file only when its directory passes the guarded
+/// cleanup checks. Legacy, generic, or ambiguous serialized data is preserved
+/// and reported as a cleanup conflict; a missing path is a no-op.
 pub fn clear(path: &Path) -> VaultResult<()> {
-    if path.exists() {
-        let _ = fs::remove_file(path);
-    }
-    Ok(())
+    crate::session_management::cleanup_file::clear_recognizable_current_session_file(path)
 }

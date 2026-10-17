@@ -25,7 +25,7 @@ fn get_once_bypasses_session_cache_and_does_not_create_it() {
     save_vault_file(&entry, &path, pw).expect("seed vault");
 
     // Ensure no derived-key session exists
-    let dk_path = dk_session_file_for(&path);
+    let dk_path = dk_session_file_for(&path).unwrap();
     if dk_path.exists() {
         std::fs::remove_file(&dk_path).unwrap();
     }

@@ -9,33 +9,33 @@
 </p>
 
 
-### Kevi is a Rust, terminal-first password and secrets manager. It keeps everything in a single encrypted vault (Argon2id + AES-256-GCM), works well in headless and local setups, and ships an optional TUI for browsing and editing.
+### A local-first password and TOTP vault for people who want their secrets in a file they control—and an interface they can script.
 
-## Why Kevi
-- Single encrypted file, easy to back up and sync
-- CLI-first UX with an optional Ratatui interface
-- Fast unlock cache with TTL; explicit `kevi lock` to clear it
-- Clipboard helper with TTL and SSH/headless warnings (`--no-copy` / `--echo` available)
-- Built‑in generator (passwords or passphrases) with env/config overrides
-- TOTP storage and code generation with JSON output for scripting
-- Profiles for multi-vault setups; configurable vault paths and backups
+Kevi is a Rust CLI with an optional terminal UI. Vault contents are encrypted with Argon2id-derived keys and AES-256-GCM. **Supported platforms: Linux and macOS.**
 
-## Who Kevi is for
+| Built for | Not built for |
+| --- | --- |
+| Local vaults, terminal workflows, and scripts | Hosted sync, web sharing, or multi-user access control |
+| Passwords, notes, and TOTP credentials in one encrypted vault | Protection from a compromised operating system or live keylogging |
 
-- You want a local, terminal-first password manager with one encrypted vault file.
-- You prefer scripting and automation-friendly commands with JSON output when needed.
-- You want optional TUI convenience without depending on a full desktop app.
+### At a glance
 
-Kevi is likely not a fit if you need a built-in sync service, web sharing flows, or multi-user access control out of the box.
+- One encrypted vault file; backups are also encrypted.
+- CLI and JSON output, with an optional Ratatui terminal UI.
+- Password/passphrase generation and TOTP code generation.
+- Short-lived derived-key cache: OS-protected by default; an insecure file fallback is explicit opt-in on Linux only.
+- Clipboard copy is the default for secret retrieval; use `--no-copy` and `--echo` to control it.
+
+See [Security at a glance](#security-at-a-glance) and the detailed [security model](SECURITY.md) before relying on Kevi for sensitive data.
 
 ## Quick start
-```bash
-# install from crates.io (if published there)
-cargo install kevi
 
-# or build from source
-cargo build --release
-./target/release/kevi --help
+Download and extract a prebuilt Linux or macOS archive from [GitHub Releases](https://github.com/KovalMax/kevi/releases), or build and install from source:
+
+```bash
+# from the repository root
+cargo install --path .
+kevi --help
 
 # create a vault (prompts for a master password)
 kevi init --path ~/.kevi/vault.ron
@@ -53,6 +53,47 @@ kevi otp get github --echo
 # browse/edit via TUI
 kevi tui
 ```
+
+The latest GitHub release may lag the current source version. Verify downloaded artifacts using the instructions in [Release verification](SECURITY.md#release-artifact-verification).
+
+## Architecture and tools
+
+The application keeps command handling, vault operations, cryptography, and platform cache behavior in separate modules:
+
+```mermaid
+flowchart LR
+  CLI[CLI / optional TUI] --> Service[Vault service]
+  Service <--> Codec[RON codec]
+  Codec <--> Cipher[AES-256-GCM]
+  Cipher <--> Vault[(Encrypted vault file)]
+  Password[Master password] --> KDF[Argon2id]
+  KDF --> Key[Derived key]
+  Key --> Cipher
+  Service --> Resolver[Session resolver]
+  Resolver --> Cache[Short-lived derived-key cache]
+  Cache --> Native[macOS Keychain / Linux Secret Service]
+  Cache -. explicit insecure opt-in on Linux .-> File[(Unencrypted key file)]
+```
+
+| Area | Implementation |
+| --- | --- |
+| Commands and configuration | `clap`, `serde`, TOML/JSON/RON |
+| Vault encryption | Argon2id (`argon2`) and AES-256-GCM (`ring`); `secrecy` and `zeroize` for secret handling |
+| Platform cache | macOS Security Framework; Linux Secret Service; explicit Linux file fallback |
+| Terminal and clipboard | `ratatui`, `crossterm`, `copypasta` |
+| TOTP | `totp-rs` |
+
+The component layout follows `src/cli`, `src/tui`, `src/vault`, `src/cryptography`, `src/session_management`, and `src/filesystem`. `kevi-core` contains shared vault contracts and models.
+
+## Security at a glance
+
+- **At rest:** vault contents are encrypted and authenticated; headers are bounded by an enforced Argon2id policy.
+- **Derived-key cache:** OS-protected by default. The Linux file fallback is unencrypted and opt-in; expiry prevents reuse but does not erase data.
+- **Clipboard:** other applications under your account may read copied values; TTL clearing is best-effort.
+- **Limits:** Kevi cannot protect against a compromised OS, live process inspection, or keylogging. No formal independent security audit has been performed.
+- **Verification:** native secure-store behavior has not yet been verified with disposable native stores. Release signatures cannot be independently authenticated until a trusted minisign public key is published.
+
+See [SECURITY.md](SECURITY.md) for the threat model, detailed cache guarantees, and release-verification procedure.
 
 ## Most used commands
 
@@ -74,6 +115,7 @@ kevi tui
 - Vault resolution (highest precedence): `--path` → `--profile` (from config) → `KEVI_VAULT_PATH` → `config.toml` `vault_path` → default `$KEVI_DATA_DIR/kevi/vault.ron` (or `~/.kevi/vault.ron`).
 - Clipboard TTL: CLI `--ttl` → env `KEVI_CLIP_TTL` → config `clipboard_ttl` → default `20s`.
 - Unlock cache TTL: CLI `--ttl` → env `KEVI_UNLOCK_TTL` → default `900s`.
+  Invalid environment values retain the `900s` fallback. Deadlines are fixed when persisted; cache hits never extend them. TTL `0` bypasses cache reads/writes for that invocation and **leaves any existing session untouched**.
 - Generator: CLI flags override `KEVI_GEN_*` env vars, which override `config.toml` generator keys, which override built-in defaults.
 - Backups kept per write: env `KEVI_BACKUPS` → config `backups` → built-in default.
 
@@ -123,11 +165,14 @@ Global option: `--profile <name>` resolves vault path via a named profile before
 - `kevi rm <key> [--path <FILE>] [--yes]` — Remove an entry by key.
   - `--path <FILE>`: vault override.
   - `--yes`: skip confirmation.
-- `kevi unlock [--path <FILE>] [--ttl <SECONDS>]` — Cache the derived key for faster subsequent commands.
+- `kevi unlock [--path <FILE>] [--ttl <SECONDS>]` — Always authenticate a fresh password against the vault before caching a derived key. Persistence failure returns a nonzero exit status; TTL `0` authenticates without creating a session.
   - `--path <FILE>`: vault override.
   - `--ttl <SECONDS>`: unlock cache TTL override.
-- `kevi lock [--path <FILE>]` — Clear the cached derived key (session cache).
+- `kevi lock [--path <FILE>]` — Attempt cleanup of the current native account and current-format file entry, independent of the selected backend. Legacy accounts and historical file names are not inspected, imported, migrated, or removed; existing legacy entries may remain and do not make current-session cleanup fail. Current file targets must pass safe parent/ancestor and identity checks. Ambiguous or unsafe current files are preserved and reported as partial cleanup failures; other current targets are still attempted. File cleanup fails closed on macOS because ACL safety cannot be verified.
   - `--path <FILE>`: vault override.
+- The public session-file `clear` API is guarded cleanup of the current cache format, not a generic serialized-session delete. It removes only a bounded, valid current envelope from a verified directory. Legacy RON envelopes, generic `save<T>` output, bare key-shaped records, ordinary/vault/ambiguous files are preserved; a missing file is a no-op. Generic `save<T>`/`load<T>` retain their signatures, but both return `CacheError::Unavailable` on macOS because safe generic file storage is not established there. On Linux, they provide generic expiring file-session persistence; output remains ineligible for guarded deletion.
+  - Generic `save<T>` treats zero TTL as a no-I/O success on every platform and rejects nonzero fractional-second TTLs with `CacheError::InvalidTtl` before platform availability checks; persisted TTLs are never silently rounded down.
+  - Current file cleanup checks are path-based and do not protect against same-user concurrent filesystem mutation; see `SECURITY.md`.
 - `kevi tui [--path <FILE>]` — Launch the interactive TUI against the resolved vault.
   - `--path <FILE>`: vault override for the TUI.
 
@@ -209,9 +254,44 @@ kevi otp get github --json
 - Env vars: `KEVI_PASSWORD`, `KEVI_VAULT_PATH`, `KEVI_CLIP_TTL`, `KEVI_UNLOCK_TTL`, `KEVI_BACKUPS`, `KEVI_GEN_LENGTH`, `KEVI_GEN_WORDS`, `KEVI_GEN_SEP`, `KEVI_AVOID_AMBIGUOUS`.
 - Precedence: CLI flags → env vars → config file → built‑in defaults.
 
+### Derived-key cache
+
+- All cache-producing flows, including `init`, implicit vault operations and `unlock`, default to OS-protected storage: macOS Security Framework or Linux Secret Service. Explicit `init` passwords authenticate an existing vault before replacement; a cached key cannot override the supplied password. There is no automatic file/sample/keyutils fallback.
+- Only `KEVI_INSECURE_CACHE_FALLBACK=1` or case-insensitive `true` opts into an **insecure base64 key file** and emits a warning. `KEVI_PASSWORD` and test-harness variables do not change storage selection; `KEVI_PREFER_SECURE_CACHE` has no effect. File persistence is supported only on Linux: macOS ACL grants are not reliably checked, so this mode is rejected and file cleanup is fail-closed there.
+- A versioned envelope binds the exact 32-byte key to a canonical absolute path identity, header fingerprint, issue time and fixed expiry. Existing symlinks resolve to the same identity; the file namespace includes the full path identity and does not replace the vault's extension. Legacy or expiryless sessions are not read or imported. Authenticate again to create a current-format session; existing legacy entries are left untouched. Secure mode never reads the insecure cache file.
+- Fresh keys are published only after successful authenticated decode or successful creation/save. Existing ciphertext is authenticated before replacement. Ordinary vault operations can succeed uncached with a warning; explicit `unlock` cannot falsely claim persistence. CLI/OTP warnings use stderr; TUI warnings are queued visibly without printing into its active terminal.
+- Expiry means refusal to reuse, **not scheduled deletion or physical erasure**. Checks use wall time: clock rollback can extend the effective lifetime; no cross-process monotonic-clock guarantee is made. `--once` performs no cache reads, writes or refreshes.
+- `lock` targets only the current native account and current-format file path. It does not inspect, import, migrate, or delete legacy accounts or historical file names; those entries may remain without affecting current-lock status. Current file cleanup requires safe parent/ancestor directories and a file-identity check; macOS fails closed because ACL safety cannot be established. Ambiguous current files are preserved and reported as partial failures. Lock does not scan stores or discover unknown names, renames, or hard-link aliases. Its guarantee requires quiescence: **no overlapping cache writers**, including work begun before lock that could publish afterward. It does not revoke keys already in memory or prevent later writes.
+- Disposable-store macOS and Linux verification is required before claiming platform readiness. Deterministic fake/file tests and file-only CI are not native-store evidence. See [SECURITY.md](SECURITY.md).
+
 ## Security notes
 
 - Argon2id KDF, AES‑256‑GCM encryption; secrets handled with `secrecy`.
+- Direct `decrypt_vault` calls hold the derived key in zeroizing ownership through
+  decryption; this does not guarantee erasure of KDF/compiler temporaries or
+  library-internal copies.
+
+Vault headers are accepted only up to Argon2id parameters of 128 MiB memory,
+5 iterations, and 2 lanes (with valid Argon2 minima). Headers outside this
+policy are rejected, not silently adjusted. If an older vault exceeds these
+limits, preserve a backup and contact support; do not overwrite the only copy.
+
+### Release verification
+
+Releases use stable `vX.Y.Z` tags that must exactly match the package version
+at that tag. Published assets include Linux and macOS archives, the Linux
+CycloneDX SBOM, and `SHA256SUMS.txt`. A configured signing key must produce
+`SHA256SUMS.txt.minisig` or release publication fails. Without one, the release
+includes `RELEASE-SIGNATURE-STATUS.txt` explicitly identifying it as unsigned.
+Checksum/signature verification is meaningful only when the verifier obtains
+the trusted minisign public key independently through a trusted distribution
+channel; no public key is embedded or provided here. Confirm that trust key is
+available before relying on signed release verification. From the asset
+directory, verify signed manifests with `minisign -Vm SHA256SUMS.txt -P
+<trusted-public-key>` and then verify archives/SBOM with
+`sha256sum -c SHA256SUMS.txt`. If status says unsigned, the manifest has no
+authenticity signature; compare it through an independently trusted channel
+before relying on its hashes.
 - Optional `memlock` feature on Unix to reduce swapping risk.
 - Clipboard TTL is best‑effort and platform-dependent; prefer `--no-copy`/`--echo` in sensitive or remote sessions.
 - Kevi stores data in one encrypted local file; it does not include a built-in remote sync backend.
@@ -219,10 +299,16 @@ kevi otp get github --json
 ## Development
 
 ```bash
+KEVI_INSECURE_CACHE_FALLBACK=1 cargo test --workspace
 cargo fmt --all
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --workspace
-# Linux with locked memory support
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+```
+
+Inspect tests before running on a personal machine. File opt-in does **not** prevent native access by production `lock`; deterministic cleanup tests inject a no-native adapter. Some existing workspace tests also access the system clipboard. Use disposable stores/clipboard and temporary config/data directories for those tests; this cache change has not verified those native paths.
+
+On Linux, you can also run tests with the `memlock` feature enabled:
+
+```bash
 cargo test --workspace --features memlock
 ```
 
@@ -240,12 +326,13 @@ This will create an HTML report under a `coverage-html` directory.
 
 This repository includes a GitHub Actions workflow that runs:
 
-* `cargo fmt --all` (format check)
+* `cargo fmt --all -- --check` (format check)
 * `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 * `cargo build --workspace`
-* `cargo test --workspace` (with and without `memlock` on Linux)
-* `cargo audit` (via a dedicated job)
-* `cargo llvm-cov` for coverage reporting
+* Full workspace tests on Linux with `memlock`, and on macOS without it.
+* Dependency audit on pull requests that change `Cargo.toml`, `Cargo.lock`, or the audit workflow.
+* Coverage reporting with `cargo llvm-cov` on macOS.
+* A documentation link check; broken-link findings are reported but are non-fatal.
 
 You can mirror these steps locally before pushing changes.
 
@@ -253,6 +340,6 @@ You can mirror these steps locally before pushing changes.
 
 Contributions, bug reports, and feature ideas are welcome. When submitting a pull request:
 
-* Run checks in this order: `cargo test --workspace` first, then `cargo fmt --all`, then `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
+* Run checks in this order: `KEVI_INSECURE_CACHE_FALLBACK=1 cargo test --workspace` first, then `cargo fmt --all`, then `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
 * Try to include tests for new functionality where practical.
 * Avoid logging or printing secrets; prefer redacted debug output.

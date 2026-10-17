@@ -36,10 +36,9 @@ where
     CodecType: VaultCodec,
     ResolverType: KeyResolver,
 {
-    fn domain_service<'service>(
-        &'service self,
-    ) -> VaultDomainService<LoadedVaultRepository<'service, StoreType, CodecType, ResolverType>>
-    {
+    fn domain_service(
+        &self,
+    ) -> VaultDomainService<LoadedVaultRepository<'_, StoreType, CodecType, ResolverType>> {
         VaultDomainService::new(LoadedVaultRepository { service: self })
     }
 
@@ -64,19 +63,25 @@ where
             .into());
         }
         let (hdr, _off) = parse_kevi_header(&bytes).map_err(VaultError::from)?;
-        let dk = self.key_resolver.resolve_for_header(&hdr)?;
+        let acquired = self.key_resolver.acquire_for_header(&hdr)?;
+        let dk = &acquired.derived;
         // Convert key vec to array for ring API
-        let key_vec = dk.key.expose_secret().clone();
-        let mut key_arr = [0u8; KEY_LEN];
-        key_arr.copy_from_slice(&key_vec[..KEY_LEN]);
+        let mut key_arr: [u8; KEY_LEN] = dk
+            .key
+            .expose_secret()
+            .as_slice()
+            .try_into()
+            .map_err(|_| VaultError::Message("invalid derived key length".into()))?;
         // Best‑effort lock while in use
         let _ = lock_slice(&mut key_arr);
         let pt = decrypt_vault_with_key(&bytes, &key_arr)
-            .map_err(|_| VaultError::Message("Failed to decrypt vault (wrong key?)".to_string()))?;
+            .map_err(|_| VaultError::Message("Failed to decrypt vault (wrong key?)".to_string()));
         // Always unlock + zeroize
         let _ = unlock_slice(&mut key_arr);
         key_arr.zeroize();
-        self.codec.decode(&pt)
+        let data = self.codec.decode(&pt?)?;
+        self.key_resolver.publish(&hdr, &acquired);
+        Ok(data)
     }
 
     pub fn save(&self, data: &VaultData) -> VaultResult<()> {
@@ -85,22 +90,34 @@ where
         if !bytes.is_empty() {
             // Reuse existing header params and salt, generate new nonce
             let (hdr, _off) = parse_kevi_header(&bytes).map_err(VaultError::from)?;
-            let dk = self.key_resolver.resolve_for_header(&hdr)?;
-            let key_vec = dk.key.expose_secret().clone();
-            let mut key_arr = [0u8; KEY_LEN];
-            key_arr.copy_from_slice(&key_vec[..KEY_LEN]);
+            let acquired = self.key_resolver.acquire_for_header(&hdr)?;
+            let dk = &acquired.derived;
+            let mut key_arr: [u8; KEY_LEN] = dk
+                .key
+                .expose_secret()
+                .as_slice()
+                .try_into()
+                .map_err(|_| VaultError::Message("invalid derived key length".into()))?;
             let _ = lock_slice(&mut key_arr);
-            let ct = encrypt_vault_with_key(
-                &plain,
-                hdr.m_cost_kib,
-                hdr.t_cost,
-                hdr.p_lanes,
-                hdr.salt,
-                &key_arr,
-            )?;
+            let ct = (|| {
+                let original = decrypt_vault_with_key(&bytes, &key_arr).map_err(|_| {
+                    VaultError::Message("Failed to authenticate original vault".into())
+                })?;
+                self.codec.decode(&original)?;
+                encrypt_vault_with_key(
+                    &plain,
+                    hdr.m_cost_kib,
+                    hdr.t_cost,
+                    hdr.p_lanes,
+                    hdr.salt,
+                    &key_arr,
+                )
+            })();
             let _ = unlock_slice(&mut key_arr);
             key_arr.zeroize();
-            self.store.write(&ct)
+            self.store.write(&ct?)?;
+            self.key_resolver.publish(&hdr, &acquired);
+            Ok(())
         } else {
             // New vault: generate params + salt, derive/cached key, encrypt and write
             let (m_cost_kib, t_cost, p_lanes) = default_params();
@@ -113,15 +130,22 @@ where
                 t_cost,
                 p_lanes,
             };
-            let dk = self.key_resolver.resolve_for_new_vault(params, salt)?;
-            let key_vec = dk.key.expose_secret().clone();
-            let mut key_arr = [0u8; KEY_LEN];
-            key_arr.copy_from_slice(&key_vec[..KEY_LEN]);
+            let acquired = self.key_resolver.acquire_for_new_vault(params, salt)?;
+            let dk = &acquired.derived;
+            let mut key_arr: [u8; KEY_LEN] = dk
+                .key
+                .expose_secret()
+                .as_slice()
+                .try_into()
+                .map_err(|_| VaultError::Message("invalid derived key length".into()))?;
             let _ = lock_slice(&mut key_arr);
-            let ct = encrypt_vault_with_key(&plain, m_cost_kib, t_cost, p_lanes, salt, &key_arr)?;
+            let ct = encrypt_vault_with_key(&plain, m_cost_kib, t_cost, p_lanes, salt, &key_arr);
             let _ = unlock_slice(&mut key_arr);
             key_arr.zeroize();
-            self.store.write(&ct)
+            self.store.write(&ct?)?;
+            let header = crate::session_management::lifecycle::header_for(params, salt);
+            self.key_resolver.publish(&header, &acquired);
+            Ok(())
         }
     }
 

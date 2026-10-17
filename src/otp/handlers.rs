@@ -3,7 +3,8 @@ use crate::config::app_config::Config;
 use crate::domain::OtpName;
 use crate::error::{OtpError, OtpResult};
 use crate::filesystem::clipboard::{
-    copy_with_ttl_using_system_clipboard, environment_warning, ttl_seconds, ClipboardCopyError,
+    copy_with_ttl_using_system_clipboard, environment_warning, report_clipboard_copy_result,
+    ttl_seconds,
 };
 use crate::otp::models::OtpAlgorithm;
 use crate::otp::parser::parse_otp_entry;
@@ -176,15 +177,7 @@ impl<'config> OtpHandlers<'config> {
             eprintln!("⚠️ {warn}");
         }
         let secret = secrecy::SecretString::new(code.clone().into());
-        match copy_with_ttl_using_system_clipboard(&secret, ttl) {
-            Ok(()) => {}
-            Err(ClipboardCopyError::Unavailable(error)) => {
-                eprintln!("⚠️ Clipboard not available: {error}");
-            }
-            Err(ClipboardCopyError::CopyFailed(error)) => {
-                eprintln!("⚠️ Failed to copy to clipboard: {error}");
-            }
-        }
+        report_clipboard_copy_result(copy_with_ttl_using_system_clipboard(&secret, ttl));
 
         Ok(())
     }

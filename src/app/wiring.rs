@@ -8,14 +8,33 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub fn create_vault_service(config: &Config) -> Arc<VaultService> {
-    create_vault_service_with_mode(config, false)
+    create_vault_service_with_mode(
+        config,
+        false,
+        crate::session_management::resolver::default_warning_sink(),
+    )
 }
 
 pub fn create_vault_service_bypass_cache(config: &Config) -> Arc<VaultService> {
-    create_vault_service_with_mode(config, true)
+    create_vault_service_with_mode(
+        config,
+        true,
+        crate::session_management::resolver::default_warning_sink(),
+    )
 }
 
-fn create_vault_service_with_mode(config: &Config, bypass_cache: bool) -> Arc<VaultService> {
+pub fn create_vault_service_with_warnings(
+    config: &Config,
+    sink: crate::session_management::resolver::WarningSink,
+) -> Arc<VaultService> {
+    create_vault_service_with_mode(config, false, sink)
+}
+
+fn create_vault_service_with_mode(
+    config: &Config,
+    bypass_cache: bool,
+    sink: crate::session_management::resolver::WarningSink,
+) -> Arc<VaultService> {
     let backups = config.backups.unwrap_or(Defaults::BACKUPS);
     let vault_path: PathBuf = config.vault_path.clone().into();
     let store: Arc<dyn ByteStore> =
@@ -24,7 +43,7 @@ fn create_vault_service_with_mode(config: &Config, bypass_cache: bool) -> Arc<Va
     let key_resolver: Arc<dyn KeyResolver> = if bypass_cache {
         Arc::new(BypassKeyResolver::new())
     } else {
-        Arc::new(CachedKeyResolver::new(vault_path))
+        Arc::new(CachedKeyResolver::for_path_with_sink(vault_path, sink))
     };
     Arc::new(VaultService::new(store, codec, key_resolver))
 }
