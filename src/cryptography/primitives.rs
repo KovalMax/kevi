@@ -267,3 +267,25 @@ pub fn decrypt_vault_with_key(data: &[u8], derived_key: &[u8; KEY_LEN]) -> Vault
         .map_err(|_| KeviError::crypto("decryption failed"))?;
     Ok(pt.to_vec())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_kevi_header, HeaderError, HEADER_MAGIC};
+
+    #[test]
+    fn header_parser_rejects_invalid_magic_and_unsupported_version() {
+        let mut bytes = vec![0; 4 + 2 + 1 + 1 + 4 * 3 + 16 + 12];
+        bytes[..4].copy_from_slice(b"NOPE");
+        assert!(matches!(
+            parse_kevi_header(&bytes),
+            Err(HeaderError::InvalidMagic)
+        ));
+
+        bytes[..4].copy_from_slice(HEADER_MAGIC);
+        bytes[4..6].copy_from_slice(&2u16.to_le_bytes());
+        assert!(matches!(
+            parse_kevi_header(&bytes),
+            Err(HeaderError::UnsupportedVersion(2))
+        ));
+    }
+}

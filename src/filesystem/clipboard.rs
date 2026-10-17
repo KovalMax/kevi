@@ -16,6 +16,10 @@ pub struct SystemClipboardEngine {
     ctx: Mutex<ClipboardContext>,
 }
 
+fn optional_contents<E: std::fmt::Debug>(result: Result<String, E>) -> Option<String> {
+    result.ok()
+}
+
 impl SystemClipboardEngine {
     pub fn new() -> VaultResult<Self> {
         let ctx = ClipboardContext::new()
@@ -29,10 +33,7 @@ impl SystemClipboardEngine {
 impl ClipboardEngine for SystemClipboardEngine {
     fn get_contents(&self) -> VaultResult<Option<String>> {
         let mut guard = self.ctx.lock().unwrap();
-        match guard.get_contents() {
-            Ok(s) => Ok(Some(s)),
-            Err(_) => Ok(None),
-        }
+        Ok(optional_contents(guard.get_contents()))
     }
 
     fn set_contents(&self, contents: &str) -> VaultResult<()> {
@@ -124,4 +125,59 @@ pub fn environment_warning() -> Option<String> {
         return Some("No DISPLAY/WAYLAND detected; clipboard may be unavailable.".to_string());
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(all(target_family = "unix", not(target_os = "macos")))]
+    use super::environment_warning;
+    use super::{optional_contents, report_clipboard_copy_result};
+    use crate::error::KeviError;
+    use crate::filesystem::clipboard::ClipboardCopyError;
+
+    #[test]
+    fn clipboard_read_errors_are_best_effort_but_success_is_preserved() {
+        assert_eq!(
+            optional_contents::<std::io::Error>(Ok("copied".into())),
+            Some("copied".into())
+        );
+        assert_eq!(
+            optional_contents::<std::io::Error>(Err(std::io::Error::other("unavailable"))),
+            None
+        );
+    }
+
+    #[test]
+    fn reporting_copy_errors_does_not_panic() {
+        report_clipboard_copy_result(Err(ClipboardCopyError::Unavailable(KeviError::io(
+            "clipboard unavailable",
+        ))));
+        report_clipboard_copy_result(Err(ClipboardCopyError::CopyFailed(KeviError::io(
+            "copy failed",
+        ))));
+    }
+
+    #[cfg(all(target_family = "unix", not(target_os = "macos")))]
+    #[test]
+    #[serial_test::serial]
+    fn headless_environment_gets_clipboard_warning() {
+        let previous =
+            ["SSH_CONNECTION", "SSH_TTY", "DISPLAY", "WAYLAND_DISPLAY"].map(std::env::var_os);
+        for key in ["SSH_CONNECTION", "SSH_TTY", "DISPLAY", "WAYLAND_DISPLAY"] {
+            std::env::remove_var(key);
+        }
+
+        assert!(environment_warning()
+            .unwrap()
+            .contains("No DISPLAY/WAYLAND detected"));
+
+        for (key, value) in ["SSH_CONNECTION", "SSH_TTY", "DISPLAY", "WAYLAND_DISPLAY"]
+            .into_iter()
+            .zip(previous)
+        {
+            if let Some(value) = value {
+                std::env::set_var(key, value);
+            }
+        }
+    }
 }
