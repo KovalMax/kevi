@@ -336,13 +336,10 @@ fn cleanup_preserves_file_sessions_in_externally_mutable_directory_but_attempts_
 
     assert!(error.to_string().contains("partial cache cleanup failure"));
     assert!(legacy.exists(), "legacy artifacts are not cleanup targets");
-    #[cfg(not(target_os = "macos"))]
     assert!(
-        !current.exists(),
-        "other eligible targets are still attempted"
+        current.exists(),
+        "the current file cache must be preserved in an unsafe directory"
     );
-    #[cfg(target_os = "macos")]
-    assert!(current.exists(), "macOS ACL status is not verifiable");
     assert!(!cleanup.files.lock().unwrap().contains(&legacy));
     assert_eq!(cleanup.native.lock().unwrap().len(), 1);
 }
