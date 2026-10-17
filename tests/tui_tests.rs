@@ -8,6 +8,7 @@ use ratatui::Terminal;
 use secrecy::SecretString;
 use std::env;
 use std::sync::Arc;
+use std::time::Duration;
 use tempfile::tempdir;
 
 fn entry(label: &str, pw: Option<&str>) -> VaultEntry {
@@ -18,6 +19,19 @@ fn entry(label: &str, pw: Option<&str>) -> VaultEntry {
         password: SecretString::new(pw.to_string().into()),
         notes: None,
     }
+}
+
+fn isolated_service(path: std::path::PathBuf) -> Arc<VaultService> {
+    let resolver = Arc::new(
+        CachedKeyResolver::new(path.clone())
+            .with_ttl(Duration::ZERO)
+            .with_password("tui-test-password".into()),
+    );
+    Arc::new(VaultService::new(
+        Arc::new(FileByteStore::new(path)),
+        Arc::new(RonCodec),
+        resolver,
+    ))
 }
 
 #[test]
@@ -403,4 +417,196 @@ async fn empty_state_handling() {
         .await
         .unwrap();
     assert_eq!(app.visible_labels().len(), 0); // Filter on empty stays empty
+}
+
+#[tokio::test]
+async fn list_and_search_key_paths_cover_empty_optional_fields_and_noops() {
+    let directory = tempdir().unwrap();
+    let service = isolated_service(directory.path().join("vault.ron"));
+    let mut app = App::new(vec![]);
+
+    app.handle_key_event(KeyCode::Enter, 10, service.clone())
+        .await
+        .unwrap();
+    app.handle_key_event(KeyCode::Char('u'), 10, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.toast_message(), None);
+    app.handle_key_event(KeyCode::Char('x'), 10, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.view, View::List);
+
+    app.enter_search();
+    app.handle_key_event(KeyCode::Char('x'), 10, service.clone())
+        .await
+        .unwrap();
+    app.handle_key_event(KeyCode::Up, 10, service.clone())
+        .await
+        .unwrap();
+    app.handle_key_event(KeyCode::Backspace, 10, service.clone())
+        .await
+        .unwrap();
+    assert!(app.filter.is_empty());
+    app.handle_key_event(KeyCode::Enter, 10, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.mode, Mode::Normal);
+}
+
+#[tokio::test]
+async fn details_and_form_key_paths_handle_optional_data_and_control_keys() {
+    let directory = tempdir().unwrap();
+    let service = isolated_service(directory.path().join("vault.ron"));
+    let mut app = App::new(vec![entry("one", None)]);
+    app.enter_details();
+
+    app.handle_key_event(KeyCode::Char('u'), 10, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.toast_message(), Some("No username"));
+    app.handle_key_event(KeyCode::Char('v'), 10, service.clone())
+        .await
+        .unwrap();
+    assert!(app.reveal_password);
+    app.handle_key_event(KeyCode::Char('v'), 10, service.clone())
+        .await
+        .unwrap();
+    assert!(!app.reveal_password);
+
+    app.handle_key_event(KeyCode::Char('e'), 10, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.form_user, "");
+    assert_eq!(app.form_password, "test");
+    app.handle_key_event(KeyCode::BackTab, 10, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.form_field, FormField::Notes);
+    app.handle_key_event(KeyCode::Char('n'), 10, service.clone())
+        .await
+        .unwrap();
+    app.handle_key_event(KeyCode::Char('\n'), 10, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.form_notes, "n");
+    app.handle_key_event(KeyCode::Backspace, 10, service.clone())
+        .await
+        .unwrap();
+    assert!(app.form_notes.is_empty());
+    app.handle_key_event(KeyCode::Esc, 10, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.view, View::List);
+
+    app.enter_add();
+    app.handle_key_event(KeyCode::Enter, 10, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.toast_message(), Some("Label required"));
+    app.form_label = "one".into();
+    app.handle_key_event(KeyCode::Enter, 10, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.toast_message(), Some("Label exists"));
+}
+
+#[tokio::test]
+async fn add_form_saves_trimmed_optional_values_and_generates_missing_password() {
+    let directory = tempdir().unwrap();
+    let service = isolated_service(directory.path().join("vault.ron"));
+    service.save(&kevi::api::VaultData::default()).unwrap();
+    let mut app = App::new(vec![]);
+    app.enter_add();
+    app.form_label = "  created  ".into();
+    app.form_user = " user ".into();
+    app.form_notes = " note ".into();
+
+    app.handle_key_event(KeyCode::Enter, 10, service.clone())
+        .await
+        .unwrap();
+
+    assert_eq!(app.view, View::List);
+    assert_eq!(app.toast_message(), Some("Saved"));
+    assert_eq!(app.visible_labels(), vec!["created"]);
+    assert_eq!(
+        app.selected_field(kevi::api::GetField::User).as_deref(),
+        Some("user")
+    );
+    assert_eq!(
+        app.selected_field(kevi::api::GetField::Notes).as_deref(),
+        Some("note")
+    );
+    assert!(
+        app.selected_field(kevi::api::GetField::Password)
+            .unwrap()
+            .len()
+            >= 20
+    );
+}
+
+#[test]
+fn form_fields_wrap_and_edit_each_input_independently() {
+    let mut app = App::new(vec![entry("one", None)]);
+    for field in [
+        FormField::User,
+        FormField::Password,
+        FormField::Notes,
+        FormField::Label,
+    ] {
+        app.next_field();
+        assert_eq!(app.form_field, field);
+        app.update_form_char('x');
+        app.backspace_form();
+    }
+    for field in [
+        FormField::Notes,
+        FormField::Password,
+        FormField::User,
+        FormField::Label,
+    ] {
+        app.prev_field();
+        assert_eq!(app.form_field, field);
+    }
+
+    app.enter_details();
+    app.reveal_password = true;
+    app.back_to_list();
+    assert!(!app.reveal_password);
+    app.enter_edit();
+    assert_eq!(app.form_label, "one");
+    app.replace_entries(vec![]);
+    assert_eq!(app.selected_label(), None);
+    assert_eq!(app.selected_field(kevi::api::GetField::Password), None);
+}
+
+#[tokio::test]
+async fn edit_modal_updates_an_existing_entry_and_delete_empty_selection_cancels() {
+    let directory = tempdir().unwrap();
+    let service = isolated_service(directory.path().join("vault.ron"));
+    service.save(&kevi::api::VaultData::default()).unwrap();
+    service
+        .add_entry(entry("before", Some("old-password")))
+        .unwrap();
+
+    let mut app = App::new(vec![entry("before", Some("old-password"))]);
+    app.enter_edit();
+    app.form_label = "after".into();
+    app.form_password = "new-password".into();
+    app.handle_key_event(KeyCode::Enter, 10, service.clone())
+        .await
+        .unwrap();
+    assert_eq!(app.visible_labels(), vec!["after"]);
+    assert_eq!(
+        app.selected_field(kevi::api::GetField::Password).as_deref(),
+        Some("new-password")
+    );
+
+    let mut empty_app = App::new(vec![]);
+    empty_app.enter_confirm_delete();
+    empty_app
+        .handle_key_event(KeyCode::Char('y'), 10, service)
+        .await
+        .unwrap();
+    assert_eq!(empty_app.view, View::Details);
 }

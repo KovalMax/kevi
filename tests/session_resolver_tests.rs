@@ -277,3 +277,31 @@ fn selection_requires_explicit_opt_in_and_ttl_precedence_is_compatible() {
     std::env::remove_var("KEVI_PREFER_SECURE_CACHE");
     std::env::set_var("KEVI_INSECURE_CACHE_FALLBACK", "1");
 }
+
+#[test]
+fn cache_warning_text_explains_each_storage_outcome() {
+    assert!(CacheWarning::InsecureFile
+        .to_string()
+        .contains("not OS-protected"));
+    assert!(CacheWarning::UnsupportedFile
+        .to_string()
+        .contains("unsupported on macOS"));
+    assert!(CacheWarning::Failure(CacheError::Denied)
+        .to_string()
+        .contains("continuing without caching"));
+}
+
+#[test]
+#[serial_test::serial]
+fn selected_file_store_clear_is_idempotent_for_a_missing_cache() {
+    let previous = std::env::var_os("KEVI_INSECURE_CACHE_FALLBACK");
+    std::env::set_var("KEVI_INSECURE_CACHE_FALLBACK", "1");
+    let directory = tempfile::tempdir().unwrap();
+    let (store, _) = session_store_for_vault(&directory.path().join("vault.ron"));
+    store.clear_cached().unwrap();
+    store.clear_cached().unwrap();
+    match previous {
+        Some(value) => std::env::set_var("KEVI_INSECURE_CACHE_FALLBACK", value),
+        None => std::env::remove_var("KEVI_INSECURE_CACHE_FALLBACK"),
+    }
+}
