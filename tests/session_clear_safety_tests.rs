@@ -70,7 +70,8 @@ fn public_clear_missing_path_is_a_noop() {
 #[test]
 #[cfg(all(unix, not(target_os = "macos")))]
 fn public_clear_removes_recognizable_cache_session_in_protected_directory() {
-    let directory = tempdir().unwrap();
+    let home = std::env::var_os("HOME").expect("CI provides a protected home directory");
+    let directory = tempfile::tempdir_in(home).expect("create fixture below protected home");
     let path = directory.path().join("cache.dksession");
     FileDerivedKeySessionStore::new(path.clone())
         .save_cached(&stored_session(), Duration::from_secs(60))
