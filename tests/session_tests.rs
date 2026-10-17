@@ -13,7 +13,8 @@ impl Clock for Fixed {
 #[cfg(all(unix, not(target_os = "macos")))]
 fn file_session_roundtrip_is_restrictive_and_expired_reads_do_not_delete() {
     use std::os::unix::fs::PermissionsExt;
-    let dir = tempdir().unwrap();
+    let home = std::env::var_os("HOME").expect("CI provides a protected home directory");
+    let dir = tempfile::tempdir_in(home).expect("create fixture below protected home");
     let path = dk_session_file_for(dir.path().join("vault.ron")).unwrap();
     let store = FileDerivedKeySessionStore::new(path.clone());
     assert!(store.load_cached().unwrap().is_none());
