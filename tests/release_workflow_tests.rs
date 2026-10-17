@@ -1,6 +1,6 @@
 #[test]
 fn release_workflow_validates_stable_exact_tag_and_merges_before_signing() {
-    let workflow = include_str!("../.github/workflows/release.yml");
+    let workflow = include_str!("../.github/workflows/release.yml").replace("\r\n", "\n");
     let third_party_uses = workflow
         .lines()
         .filter_map(|line| line.trim().strip_prefix("uses: "))
@@ -64,7 +64,7 @@ fn release_workflow_validates_stable_exact_tag_and_merges_before_signing() {
 
 #[test]
 fn dependency_audit_is_blocking_and_does_not_publish_with_a_github_token() {
-    let workflow = include_str!("../.github/workflows/audit.yml");
+    let workflow = include_str!("../.github/workflows/audit.yml").replace("\r\n", "\n");
 
     assert!(workflow.contains("pull_request:\n    paths:"));
     assert!(workflow.contains("- '.github/workflows/audit.yml'"));

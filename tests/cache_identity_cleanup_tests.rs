@@ -145,7 +145,9 @@ fn cleanup_attempts_current_targets_after_native_errors_and_missing_only_succeed
         #[cfg(any(target_os = "macos", windows))]
         assert!(cleanup.files.lock().unwrap().is_empty());
     }
-    std::fs::remove_file(&current).unwrap();
+    if current.exists() {
+        std::fs::remove_file(&current).unwrap();
+    }
     clear_with(
         &vault,
         &Cleanup {
@@ -317,11 +319,11 @@ fn cleanup_preserves_file_sessions_in_externally_mutable_directory_but_attempts_
     use std::os::unix::fs::PermissionsExt;
 
     let dir = cleanup_test_dir();
-    let vault = dir.path().join("vault.ron");
-    std::fs::write(&vault, b"dummy vault").unwrap();
     let unsafe_dir = dir.path().join("externally-mutable");
     std::fs::create_dir(&unsafe_dir).unwrap();
-    let alias = unsafe_dir.join("vault-alias.ron");
+    let vault = unsafe_dir.join("vault.ron");
+    std::fs::write(&vault, b"dummy vault").unwrap();
+    let alias = dir.path().join("vault-alias.ron");
     std::os::unix::fs::symlink(&vault, &alias).unwrap();
     let current = dk_session_file_for(&vault).unwrap();
     let legacy = alias.with_extension("dksession");
