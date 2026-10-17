@@ -1,5 +1,6 @@
 use kevi::api::{
-    load_vault_file, save_vault_file, AddOptions, Config, GetField, Vault, VaultData, VaultEntry,
+    dk_session_file_for, load_vault_file, path_identity, save_vault_file, AddOptions, Config,
+    DerivedKeyStored, GetField, Vault, VaultData, VaultEntry,
 };
 use secrecy::SecretString;
 use std::env;
@@ -114,6 +115,12 @@ async fn test_handle_get_empty_optional_field_is_ok() {
 #[tokio::test]
 #[serial_test::serial]
 async fn show_and_list_cover_optional_values_json_and_missing_entries() {
+    #[cfg(target_os = "linux")]
+    let directory = tempfile::tempdir_in(
+        std::env::var_os("HOME").expect("CI provides a protected home directory"),
+    )
+    .unwrap();
+    #[cfg(not(target_os = "linux"))]
     let directory = tempdir().unwrap();
     let path = directory.path().join("vault.ron");
     let password = "test-password";
@@ -135,7 +142,7 @@ async fn show_and_list_cover_optional_values_json_and_missing_entries() {
         otps: vec![],
     };
     save_vault_file(&data, &path, password).unwrap();
-    let config = Config::create(Some(path), None).unwrap();
+    let config = Config::create(Some(path.clone()), None).unwrap();
     let vault = Vault::create(&config);
     env::set_var("KEVI_PASSWORD", password);
     vault.handle_unlock(Some(0)).await.unwrap();
@@ -173,7 +180,26 @@ async fn show_and_list_cover_optional_values_json_and_missing_entries() {
             }
         }
     }
-    vault.handle_lock_with(&FilesOnly).unwrap();
+    let session_path = dk_session_file_for(&path).unwrap();
+    let session = DerivedKeyStored {
+        schema: 1,
+        identity: path_identity(&path).unwrap(),
+        header_fingerprint_hex: "ab".repeat(32),
+        issued_at_unix: 100,
+        expires_at_unix: 200,
+        key_b64: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=".into(),
+    }
+    .encode()
+    .unwrap();
+    std::fs::write(&session_path, session).unwrap();
+    let lock_result = vault.handle_lock_with(&FilesOnly);
+    #[cfg(target_os = "linux")]
+    {
+        lock_result.unwrap();
+        assert!(!session_path.exists());
+    }
+    #[cfg(target_os = "macos")]
+    assert!(lock_result.is_err(), "macOS file cleanup fails closed");
 }
 
 #[tokio::test]
