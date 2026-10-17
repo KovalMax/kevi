@@ -7,6 +7,25 @@ and how to use it safely in practice.
 It is aimed at technically minded users who want to understand what
 Kevi does - and does not - protect against.
 
+Kevi currently supports Linux and macOS. Other operating systems are not
+supported, even where some platform-independent code may compile.
+
+## Security status at a glance
+
+- Vaults use Argon2id and AES-256-GCM. Accepted KDF parameters are bounded by
+  policy; the limits are detailed below.
+- The derived-key cache uses the platform's native secure store by default. The
+  explicit Linux file fallback is unencrypted and should be treated as a secret.
+- Kevi has **not had a formal independent security audit**. Automated tests and
+  CI do not prove native Keychain/Secret Service behavior; disposable native-store
+  verification has not been run.
+- GitHub private vulnerability reporting is currently disabled. Do not post
+  exploit details in a public issue; maintainers need to publish or enable a
+  private reporting route.
+- Release signatures are only independently verifiable with a trusted minisign
+  public key. The project does not currently publish one, so signatures alone do
+  not establish release authenticity for users.
+
 
 Threat model
 ------------
@@ -53,7 +72,7 @@ Kevi derives an encryption key from your master password using the
 * Version: `0x13` (`argon2::Version::V0x13`)
 * Output key length: 32 bytes (256 bits)
 
-Default parameters (as of 2025) are defined in `default_params()`:
+The current default parameters are defined in `default_params()`:
 
 * Memory cost: `64 * 1024` KiB = **64 MiB**
 * Time cost: `3` iterations
@@ -82,8 +101,9 @@ CLI tool on modern hardware. You can think of them as:
 * Still fast enough that unlocking the vault is tolerable on a typical
   developer workstation.
 
-Argon2id is resistant to GPU and ASIC optimization and combines
-benefits of Argon2i and Argon2d.
+Argon2id is a memory-hard function designed to increase the cost of password
+guessing, including highly parallel attacks. It does not prevent GPU/ASIC
+attacks. It combines data-independent and data-dependent processing phases.
 
 ### Vault encryption - AES-256-GCM
 
@@ -278,13 +298,17 @@ are outside this change.
 
 ### Release artifact verification
 
-Release archives and the Linux SBOM are covered by the final `SHA256SUMS.txt`.
+Linux and macOS release archives and the Linux SBOM are covered by the final
+`SHA256SUMS.txt`.
 When configured, signing that exact final manifest is required to succeed and
 produces `SHA256SUMS.txt.minisig`; absent signing configuration is explicitly
 marked unsigned. A valid signature only establishes authenticity when verified
 against a minisign public key obtained independently from a trusted channel.
 No trusted public key is currently supplied by this project; arranging that
 distribution is a prerequisite for consumers to rely on signed releases.
+Verification requires `minisign` when a signature is present and a SHA-256
+checksum tool. The documented `sha256sum` command is common on Linux; macOS users
+may need GNU coreutils or an equivalent verifier.
 
 
 Memory safety and secret handling
@@ -450,9 +474,11 @@ cryptography and secure systems design.
 Security disclosures
 --------------------
 
-If you believe you found a security issue, please report it privately
-to the maintainers instead of opening a public issue with exploit
-details.
+If you believe you found a security issue, do not open a public issue with
+exploit details. GitHub private vulnerability reporting is currently disabled,
+and no dedicated private contact address is documented. The project currently
+does not provide a documented private reporting route; maintainers should enable
+GitHub private vulnerability reporting or publish one.
 
 Include, when possible:
 
@@ -460,5 +486,5 @@ Include, when possible:
 * Reproduction steps or proof of concept.
 * Impact assessment and any suggested mitigations.
 
-We will triage reports as quickly as possible and coordinate disclosure
-timing for confirmed vulnerabilities.
+Once a private reporting route is available, maintainers should coordinate
+triage and disclosure timing for confirmed vulnerabilities with the reporter.
