@@ -124,7 +124,7 @@ fn cleanup_attempts_current_targets_after_native_errors_and_missing_only_succeed
         assert!(error.to_string().contains("partial cache cleanup failure"));
         #[cfg(all(unix, not(target_os = "macos")))]
         assert!(!current.exists());
-        #[cfg(any(target_os = "macos", windows))]
+        #[cfg(target_os = "macos")]
         assert!(current.exists(), "unsupported file cleanup fails closed");
         assert!(legacy.exists(), "legacy cache files are left untouched");
         let native = cleanup.native.lock().unwrap();
@@ -142,7 +142,7 @@ fn cleanup_attempts_current_targets_after_native_errors_and_missing_only_succeed
             vec![current.clone()],
             "only the current file path is passed to cleanup"
         );
-        #[cfg(any(target_os = "macos", windows))]
+        #[cfg(target_os = "macos")]
         assert!(cleanup.files.lock().unwrap().is_empty());
     }
     if current.exists() {
@@ -303,7 +303,7 @@ fn cleanup_removes_current_file_cache_in_a_protected_directory() {
         result.unwrap();
         assert!(!current.exists());
     }
-    #[cfg(any(target_os = "macos", windows))]
+    #[cfg(target_os = "macos")]
     {
         assert!(result.is_err());
         assert!(
@@ -341,24 +341,6 @@ fn cleanup_preserves_file_sessions_in_externally_mutable_directory_but_attempts_
         "the current file cache must be preserved in an unsafe directory"
     );
     assert!(!cleanup.files.lock().unwrap().contains(&legacy));
-    assert_eq!(cleanup.native.lock().unwrap().len(), 1);
-}
-
-#[test]
-#[cfg(windows)]
-fn windows_cleanup_fails_closed_for_current_file_and_ignores_legacy_file() {
-    let dir = cleanup_test_dir();
-    let vault = dir.path().join("vault.ron");
-    let legacy = vault.with_extension("dksession");
-    let current = dk_session_file_for(&vault).unwrap();
-    std::fs::write(&current, session_bytes()).unwrap();
-    std::fs::write(&legacy, session_bytes()).unwrap();
-
-    let cleanup = Cleanup::default();
-    assert!(clear_with(&vault, &cleanup).is_err());
-    assert_eq!(std::fs::read(&current).unwrap(), session_bytes());
-    assert_eq!(std::fs::read(&legacy).unwrap(), session_bytes());
-    assert!(cleanup.files.lock().unwrap().is_empty());
     assert_eq!(cleanup.native.lock().unwrap().len(), 1);
 }
 

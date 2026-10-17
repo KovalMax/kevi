@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
@@ -28,19 +28,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ runner.os }}" == Windows ]]; then
-            cargo build --release --workspace --locked
-          else
-            RUSTFLAGS="-C strip=symbols" cargo build --release --workspace --locked
-          fi
+          RUSTFLAGS="-C strip=symbols" cargo build --release --workspace --locked
       - name: Prepare platform archive
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ runner.os }}" == Windows ]]; then
-            archive="kevi-windows-${{ runner.arch }}.zip"
-            7z a "$archive" target/release/kevi.exe >/dev/null
-          elif [[ "${{ runner.os }}" == macOS ]]; then
+          if [[ "${{ runner.os }}" == macOS ]]; then
             archive="kevi-macos-${{ runner.arch }}.tar.gz"
             tar -czf "$archive" -C target/release kevi
           else
@@ -61,7 +54,6 @@ jobs:
           name: artifacts-${{ matrix.os }}
           path: |
             kevi-*.tar.gz
-            kevi-*.zip
             sbom.json
           if-no-files-found: error
 
@@ -83,8 +75,8 @@ jobs:
           set -euo pipefail
           cd dist
           shopt -s nullglob
-          files=(kevi-*.tar.gz kevi-*.zip sbom.json)
-          ((${#files[@]} >= 4))
+          files=(kevi-*.tar.gz sbom.json)
+          ((${#files[@]} >= 3))
           [[ -f sbom.json ]]
           if [[ -n "$MINISIGN_SECRET_KEY" ]]; then
             printf '%s\n' 'SIGNING CONFIGURED: signature asset accompanies SHA256SUMS.txt.' > RELEASE-SIGNATURE-STATUS.txt
@@ -130,7 +122,6 @@ jobs:
         with:
           files: |
             dist/kevi-*.tar.gz
-            dist/kevi-*.zip
             dist/sbom.json
             dist/SHA256SUMS.txt*
             dist/RELEASE-SIGNATURE-STATUS.txt

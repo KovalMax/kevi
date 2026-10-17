@@ -112,7 +112,7 @@ fn public_clear_preserves_recognizable_session_when_parent_is_unsafe() {
 }
 
 #[test]
-#[cfg(any(target_os = "macos", windows, not(unix)))]
+#[cfg(target_os = "macos")]
 fn public_clear_fails_closed_for_existing_session_on_unverified_platform() {
     let directory = tempdir().unwrap();
     let path = directory.path().join("session.ron");

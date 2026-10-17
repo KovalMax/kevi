@@ -35,7 +35,6 @@ fn current_session_is_recognized_but_vault_alias_is_protected() {
 
     assert!(check_target(&[], &candidate).is_ok());
     assert!(check_target(&[candidate.as_path()], &candidate).is_err());
-    #[cfg(not(windows))]
     assert!(check_target(&[directory.path()], &candidate).is_ok());
 }
 

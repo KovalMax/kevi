@@ -28,14 +28,7 @@ fn same_object(first: &Metadata, second: &Metadata) -> VaultResult<bool> {
         use std::os::unix::fs::MetadataExt;
         Ok(first.dev() == second.dev() && first.ino() == second.ino())
     }
-    #[cfg(windows)]
-    {
-        // Stable Rust does not expose a supported Windows file identity API.
-        // Never authorize deletion using a weaker path/name comparison.
-        let _ = (first, second);
-        Err(CacheError::Identity.into())
-    }
-    #[cfg(not(any(unix, windows)))]
+    #[cfg(not(unix))]
     {
         let _ = (first, second);
         Err(CacheError::Identity.into())
@@ -115,7 +108,7 @@ pub fn check_file_directory(candidate: &Path) -> VaultResult<()> {
         }
         Ok(())
     }
-    #[cfg(not(any(unix, target_os = "macos")))]
+    #[cfg(not(unix))]
     {
         let _ = candidate;
         Err(CacheError::CleanupConflict.into())

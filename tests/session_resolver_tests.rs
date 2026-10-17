@@ -259,7 +259,7 @@ fn selection_requires_explicit_opt_in_and_ttl_precedence_is_compatible() {
             session_store_for_vault(std::path::Path::new("dummy-vault")).1,
             Some(CacheWarning::UnsupportedFile)
         );
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "linux")]
         assert_eq!(
             session_store_for_vault(std::path::Path::new("dummy-vault")).1,
             Some(CacheWarning::InsecureFile)

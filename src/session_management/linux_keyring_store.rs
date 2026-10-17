@@ -1,16 +1,16 @@
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "linux")]
 use crate::{
     domain::VaultResult,
     error::CacheError,
     session_management::resolver::{DerivedKeySessionStore, DerivedKeyStored},
 };
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-pub struct LinuxWindowsKeyringSessionStore {
+#[cfg(target_os = "linux")]
+pub struct LinuxKeyringSessionStore {
     account: String,
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "linux")]
 fn classify(error: keyring_core::Error) -> CacheError {
     match error {
         keyring_core::Error::NoEntry => CacheError::Missing,
@@ -22,8 +22,8 @@ fn classify(error: keyring_core::Error) -> CacheError {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-impl LinuxWindowsKeyringSessionStore {
+#[cfg(target_os = "linux")]
+impl LinuxKeyringSessionStore {
     pub fn for_account(account: &str) -> Self {
         Self {
             account: account.into(),
@@ -33,10 +33,7 @@ impl LinuxWindowsKeyringSessionStore {
         static INITIALIZED: std::sync::OnceLock<Result<(), CacheError>> =
             std::sync::OnceLock::new();
         let result = INITIALIZED.get_or_init(|| {
-            #[cfg(target_os = "linux")]
             let result = keyring::use_named_store("secret-service");
-            #[cfg(target_os = "windows")]
-            let result = keyring::use_named_store("windows");
             result.map_err(classify)
         });
         (*result)?;
@@ -44,8 +41,8 @@ impl LinuxWindowsKeyringSessionStore {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-impl DerivedKeySessionStore for LinuxWindowsKeyringSessionStore {
+#[cfg(target_os = "linux")]
+impl DerivedKeySessionStore for LinuxKeyringSessionStore {
     fn load_cached(&self) -> VaultResult<Option<DerivedKeyStored>> {
         match self.entry()?.get_password() {
             Ok(value) => DerivedKeyStored::decode(value.as_bytes()).map(Some),

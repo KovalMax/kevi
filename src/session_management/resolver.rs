@@ -101,15 +101,15 @@ pub fn native_store(account: &str) -> VaultResult<Arc<dyn DerivedKeySessionStore
             ),
         ))
     }
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(target_os = "linux")]
     {
         Ok(Arc::new(
-            crate::session_management::keyring_store::LinuxWindowsKeyringSessionStore::for_account(
+            crate::session_management::linux_keyring_store::LinuxKeyringSessionStore::for_account(
                 account,
             ),
         ))
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = account;
         Err(CacheError::Unavailable.into())

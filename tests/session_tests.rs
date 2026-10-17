@@ -101,7 +101,7 @@ fn malformed_and_oversized_file_payloads_are_reported_without_deletion() {
 }
 
 #[test]
-#[cfg(any(not(unix), target_os = "macos"))]
+#[cfg(target_os = "macos")]
 fn file_mode_fails_closed_without_a_platform_access_control_guarantee() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("dummy-session");
@@ -145,7 +145,7 @@ fn macos_file_mode_does_not_read_write_or_delete_session_files() {
 }
 
 #[test]
-#[cfg(any(not(unix), target_os = "macos"))]
+#[cfg(target_os = "macos")]
 fn generic_session_api_fails_closed_without_reading_or_writing() {
     let dir = tempdir().unwrap();
     let existing = dir.path().join("generic-session");

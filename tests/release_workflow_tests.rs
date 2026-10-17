@@ -53,7 +53,7 @@ fn release_workflow_validates_stable_exact_tag_and_merges_before_signing() {
     assert!(workflow.contains("set -euo pipefail"));
     assert!(workflow.contains("sbom.json"));
     assert!(!workflow.contains("dist/SHA256SUMS.txt.minisig"));
-    assert!(workflow.contains("kevi-windows-${{ runner.arch }}.zip"));
+    assert!(workflow.contains("os: [ubuntu-latest, macos-latest]"));
     assert!(workflow.contains("kevi-macos-${{ runner.arch }}.tar.gz"));
     assert!(workflow.contains("kevi-linux-${{ runner.arch }}.tar.gz"));
     assert!(workflow.contains("needs: build-release"));

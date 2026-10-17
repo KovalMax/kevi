@@ -36,18 +36,9 @@ pub fn path_identity(path: &Path) -> VaultResult<String> {
         use std::os::unix::ffi::OsStrExt;
         canonical.as_os_str().as_bytes().to_vec()
     };
-    #[cfg(windows)]
-    let bytes = {
-        use std::os::windows::ffi::OsStrExt;
-        canonical
-            .as_os_str()
-            .encode_wide()
-            .flat_map(u16::to_le_bytes)
-            .collect::<Vec<_>>()
-    };
-    #[cfg(not(any(unix, windows)))]
+    #[cfg(not(unix))]
     return Err(CacheError::Identity.into());
-    #[cfg(any(unix, windows))]
+    #[cfg(unix)]
     Ok(format!("path-v1-{}", hex::encode(Sha256::digest(bytes))))
 }
 

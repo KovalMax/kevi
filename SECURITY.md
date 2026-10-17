@@ -73,7 +73,7 @@ The selected maximum tuple (128 MiB, 5 iterations, 2 lanes) completed three
 synthetic serial Linux/arm64 container runs at a median 0.305294 seconds
 and reported 137100 kB process peak RSS. This was on one Apple Silicon host,
 with one CPU and a 256 MiB memory+swap cgroup limit. It is not evidence for
-Windows, slower devices, concurrency, or historical vault compatibility.
+slower devices, concurrency, or historical vault compatibility.
 
 These values are chosen as a conservative baseline for an interactive
 CLI tool on modern hardware. You can think of them as:
@@ -154,8 +154,8 @@ short-lived **derived-key sessions** managed by commands like
 
 ### Storage and authentication
 
-Cache writes default to macOS Security Framework, explicitly selected Linux
-Secret Service, or explicitly selected Windows Credential Manager. There is no
+Cache writes default to macOS Security Framework or explicitly selected Linux
+Secret Service. There is no
 automatic insecure, sample-store or keyutils fallback. `KEVI_PASSWORD`,
 `RUST_TEST_THREADS` and the obsolete `KEVI_PREFER_SECURE_CACHE` do not downgrade
 storage. Only `KEVI_INSECURE_CACHE_FALLBACK=1` or case-insensitive `true` selects
@@ -169,8 +169,8 @@ replacement, and cleanup on failure. They do not reuse the vault's older generic
 write helper. File mode is available only on Unix platforms other than macOS.
 macOS ACLs can grant directory mutation despite restrictive POSIX mode bits, and
 this application does not reliably inspect those ACLs; explicit file-cache
-selection is therefore rejected there. Windows and other non-Unix platforms also
-fail closed. This is not a vault-wide filesystem rewrite or a physical-erasure
+selection is therefore rejected there. Other non-Unix platforms also fail closed.
+This is not a vault-wide filesystem rewrite or a physical-erasure
 guarantee.
 
 Acquisition and publication are separate. Existing loads authenticate and decode
@@ -224,7 +224,7 @@ effective user or root and has no group- or other-write permission bits. Otherwi
 the file is preserved, cleanup is reported as a sanitized partial failure, and
 remaining current targets are still attempted. File cleanup fails closed on
 macOS because ACL grants are not reliably evaluated, and on platforms where
-identity or directory safety cannot be verified (including Windows). The selected
+identity or directory safety cannot be verified. The selected
 vault, aliases to that vault, and ambiguous current files are preserved and
 reported as cleanup conflicts. Missing current entries succeed; resolution,
 provider and deletion failures are sanitized, aggregated and return nonzero after
@@ -251,21 +251,21 @@ files, bare key-shaped objects, encrypted vaults, symlinks and ambiguous content
 are preserved with a typed cleanup error when at a current target. Historical
 legacy file names are not inspected. Missing paths are a no-op. The generic `save<T>` and `load<T>`
 APIs retain their signatures, but fail with `CacheError::Unavailable` on macOS
-and non-Unix platforms (including Windows), without reading or writing a path,
+and non-Unix platforms, without reading or writing a path,
 because safe generic file-session storage is not established there. Zero TTL is
 still a no-I/O success on every platform. Nonzero fractional-second TTLs are
 rejected as `CacheError::InvalidTtl` before platform availability checks, so a
 persisted deadline is never silently shortened. On supported
 Unix platforms excluding macOS, the generic APIs use file persistence, but their
 serialized content is not implicitly eligible for guarded deletion.
-On macOS, Windows and other platforms where directory safety cannot be established,
+On macOS and other platforms where directory safety cannot be established,
 existing files fail closed. This API's path-based checks share the same
 same-user-concurrent-mutation limitation described above.
 
 Regression coverage uses injected clocks, fake faults, temporary Unix file stores,
 and CLI/service/TUI contracts. These are not proof of native secure-store behavior.
-Disposable-store macOS, Linux and Windows verification has **not been run** and
-is required before a cross-platform-ready claim. Production lock contacts native
+Disposable-store macOS and Linux verification has **not been run** and
+is required before a platform-readiness claim. Production lock contacts native
 stores even with file opt-in; deterministic tests inject cleanup adapters instead.
 Existing full-workspace clipboard tests require a disposable clipboard as well.
 
