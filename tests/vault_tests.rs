@@ -138,10 +138,15 @@ async fn show_and_list_cover_optional_values_json_and_missing_entries() {
     let config = Config::create(Some(path), None).unwrap();
     let vault = Vault::create(&config);
     env::set_var("KEVI_PASSWORD", password);
+    vault.handle_unlock(Some(0)).await.unwrap();
 
     vault.handle_show("GitHub", false).await.unwrap();
     vault.handle_show("GitHub", true).await.unwrap();
     vault.handle_show("Local", false).await.unwrap();
+    vault
+        .handle_get("Local", GetField::User, true, None, true, false)
+        .await
+        .unwrap();
     assert!(vault.handle_show("missing", false).await.is_err());
 
     vault.handle_list(None, false, true).await.unwrap();
@@ -154,6 +159,21 @@ async fn show_and_list_cover_optional_values_json_and_missing_entries() {
         .handle_list(Some("absent".into()), false, false)
         .await
         .unwrap();
+
+    struct FilesOnly;
+    impl kevi::api::CacheCleanup for FilesOnly {
+        fn native(&self, _: &str) -> kevi::api::VaultResult<()> {
+            Ok(())
+        }
+        fn file(&self, path: &std::path::Path) -> kevi::api::VaultResult<()> {
+            match std::fs::remove_file(path) {
+                Ok(()) => Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(_) => Err(kevi::api::CacheError::Delete.into()),
+            }
+        }
+    }
+    vault.handle_lock_with(&FilesOnly).unwrap();
 }
 
 #[tokio::test]

@@ -1,7 +1,7 @@
 use kevi::api::*;
 use secrecy::{ExposeSecret, SecretBox};
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicU64, AtomicUsize, Ordering},
     Arc, Mutex,
 };
 use std::time::Duration;
@@ -303,5 +303,62 @@ fn selected_file_store_clear_is_idempotent_for_a_missing_cache() {
     match previous {
         Some(value) => std::env::set_var("KEVI_INSECURE_CACHE_FALLBACK", value),
         None => std::env::remove_var("KEVI_INSECURE_CACHE_FALLBACK"),
+    }
+}
+
+#[test]
+fn password_source_and_fresh_password_bypass_cache_reads() {
+    let source_calls = Arc::new(AtomicUsize::new(0));
+    let calls = source_calls.clone();
+    let source = Arc::new(move || {
+        calls.fetch_add(1, Ordering::SeqCst);
+        Ok("source-password".to_string())
+    });
+    let store = Arc::new(Store::default());
+    let source_resolver = CachedKeyResolver::new_with_store(store.clone())
+        .with_ttl(Duration::from_secs(60))
+        .with_password_source(source);
+    let fresh = source_resolver.acquire_for_header(&header()).unwrap();
+    assert_eq!(fresh.origin, KeyOrigin::Fresh);
+    assert_eq!(source_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(*store.calls.lock().unwrap(), (1, 0));
+
+    let cached = DerivedKeyStored::issue(
+        "injected-v1".into(),
+        header_fingerprint_excluding_nonce(&header()),
+        &SecretBox::new(Box::new(vec![3; 32])),
+        Duration::from_secs(60),
+        Arc::new(TestClock(AtomicU64::new(100))).as_ref(),
+    )
+    .unwrap();
+    let store = Arc::new(Store {
+        value: Mutex::new(Some(cached)),
+        ..Store::default()
+    });
+    let fresh_resolver = resolver(store.clone(), Arc::new(TestClock(AtomicU64::new(100))), 60)
+        .with_fresh_password("fresh-password".into());
+    assert_eq!(
+        fresh_resolver.acquire_for_header(&header()).unwrap().origin,
+        KeyOrigin::Fresh
+    );
+    assert_eq!(*store.calls.lock().unwrap(), (0, 0));
+}
+
+#[test]
+#[serial_test::serial]
+fn bypass_resolver_uses_environment_password_without_session_io() {
+    let previous = std::env::var_os("KEVI_PASSWORD");
+    std::env::set_var("KEVI_PASSWORD", "environment-password");
+    let bypass = BypassKeyResolver::new();
+    let actual = bypass.resolve_for_header(&header()).unwrap();
+    let expected = CachedKeyResolver::new_with_store(Arc::new(Store::default()))
+        .with_ttl(Duration::ZERO)
+        .with_password("environment-password".into())
+        .resolve_for_header(&header())
+        .unwrap();
+    assert_eq!(actual.key.expose_secret(), expected.key.expose_secret());
+    match previous {
+        Some(value) => std::env::set_var("KEVI_PASSWORD", value),
+        None => std::env::remove_var("KEVI_PASSWORD"),
     }
 }

@@ -500,3 +500,15 @@ impl<'config> Vault<'config> {
         clear_with(self.config.vault_path.as_path(), cleanup)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::GetField;
+
+    #[test]
+    fn get_field_display_names_match_cli_output() {
+        assert_eq!(GetField::Password.to_string(), "Password");
+        assert_eq!(GetField::User.to_string(), "Username");
+        assert_eq!(GetField::Notes.to_string(), "notes");
+    }
+}

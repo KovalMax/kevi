@@ -51,3 +51,16 @@ pub fn unlock(path: &Path, ttl: Duration) -> VaultResult<()> {
     let bytes = std::fs::read(path).map_err(|_| KeviError::io("failed to read vault"))?;
     unlock_bytes(&CachedKeyResolver::new(path.into()).with_ttl(ttl), &bytes)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::unlock;
+    use std::time::Duration;
+
+    #[test]
+    fn unlock_reports_a_missing_vault_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let missing = directory.path().join("missing-vault");
+        assert!(unlock(&missing, Duration::ZERO).is_err());
+    }
+}

@@ -116,3 +116,94 @@ impl<T: KeyResolver + ?Sized> KeyResolver for Arc<T> {
         (**self).resolve_for_new_vault(params, salt)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{AcquiredKey, KeyOrigin, KeyResolver};
+    use crate::cryptography::primitives::KeviHeader;
+    use crate::domain::VaultResult;
+    use crate::vault::ports::HeaderParams;
+    use secrecy::{ExposeSecret, SecretBox};
+    use std::sync::Arc;
+
+    struct FixedResolver;
+
+    impl KeyResolver for FixedResolver {
+        fn resolve_for_header(
+            &self,
+            _: &KeviHeader,
+        ) -> VaultResult<crate::vault::ports::DerivedKey> {
+            Ok(crate::vault::ports::DerivedKey {
+                key: SecretBox::new(Box::new(vec![7; 32])),
+            })
+        }
+
+        fn resolve_for_new_vault(
+            &self,
+            _: HeaderParams,
+            _: [u8; 16],
+        ) -> VaultResult<crate::vault::ports::DerivedKey> {
+            self.resolve_for_header(&KeviHeader {
+                version: 1,
+                kdf_id: 1,
+                aead_id: 1,
+                m_cost_kib: 8,
+                t_cost: 1,
+                p_lanes: 1,
+                salt: [0; 16],
+                nonce: [0; 12],
+            })
+        }
+    }
+
+    #[test]
+    fn arc_key_resolver_forwards_acquire_publish_and_resolve_calls() {
+        let resolver = Arc::new(FixedResolver);
+        let header = KeviHeader {
+            version: 1,
+            kdf_id: 1,
+            aead_id: 1,
+            m_cost_kib: 8,
+            t_cost: 1,
+            p_lanes: 1,
+            salt: [0; 16],
+            nonce: [0; 12],
+        };
+        let acquired = KeyResolver::acquire_for_header(&resolver, &header).unwrap();
+        assert_eq!(acquired.origin, KeyOrigin::Fresh);
+        KeyResolver::publish(&resolver, &header, &acquired);
+        assert_eq!(
+            KeyResolver::resolve_for_header(&resolver, &header)
+                .unwrap()
+                .key
+                .expose_secret(),
+            acquired.derived.key.expose_secret()
+        );
+        let from_new = KeyResolver::acquire_for_new_vault(
+            &resolver,
+            HeaderParams {
+                m_cost_kib: 8,
+                t_cost: 1,
+                p_lanes: 1,
+            },
+            [0; 16],
+        )
+        .unwrap();
+        assert_eq!(from_new.origin, KeyOrigin::Fresh);
+        let resolved_new = KeyResolver::resolve_for_new_vault(
+            &resolver,
+            HeaderParams {
+                m_cost_kib: 8,
+                t_cost: 1,
+                p_lanes: 1,
+            },
+            [0; 16],
+        )
+        .unwrap();
+        assert_eq!(
+            resolved_new.key.expose_secret(),
+            from_new.derived.key.expose_secret()
+        );
+        let _typed_acquired: AcquiredKey = acquired;
+    }
+}

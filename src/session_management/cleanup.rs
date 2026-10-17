@@ -79,3 +79,17 @@ pub fn clear_with(path: &Path, cleanup: &dyn CacheCleanup) -> VaultResult<()> {
 pub fn clear_derived_key_cache_for_vault(path: &Path) -> VaultResult<()> {
     clear_with(path, &SystemCacheCleanup)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{CacheCleanup, SystemCacheCleanup};
+    use tempfile::tempdir;
+
+    #[test]
+    fn system_file_cleanup_is_idempotent_for_a_missing_session() {
+        let directory = tempdir().unwrap();
+        let missing = directory.path().join("missing-session");
+        SystemCacheCleanup.file(&missing).unwrap();
+        SystemCacheCleanup.file(&missing).unwrap();
+    }
+}
